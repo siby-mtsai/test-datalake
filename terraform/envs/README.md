@@ -1,9 +1,14 @@
 # terraform/envs
 
-One directory per environment: `dev/`, `test/`, `preprod/`, `prod/`. Each will hold the root
-module invocation and per-environment `.tfvars` (account ID, region, tags) per brief Section 8
-conventions — no hard-coded account IDs. Work happens first in Dev
-(`517293881120`, `miracletraffic-india-dev`) and promotes through Test and pre-prod via
-feature → develop → main. Prod promotion is a Section 12 checkpoint.
+One directory per environment. Each holds the root module invocation and per-environment
+`.tfvars` (account ID, region, tags) per brief Section 8 conventions — no hard-coded account IDs
+outside a given env's own `.tfvars`.
 
-Not yet implemented — blocked on AWS access (see [`../../docs/STATUS.md`](../../docs/STATUS.md)).
+- **`dev/`** — implemented. Wires up `lake-bucket`, `glue-catalog`, `athena-workgroup`, and
+  `export-task` for the Dev account (`517293881120`, `miracletraffic-india-dev`).
+- **`test/`, `preprod/`, `prod/`** — stubs. Not implemented yet: their account IDs aren't
+  confirmed, and promotion follows feature → develop → main only after Dev is signed off
+  (brief Section 7). Prod promotion is additionally a Section 12 checkpoint.
+
+See [`../../docs/STATUS.md`](../../docs/STATUS.md) for current blockers (AWS access, state
+bucket/DynamoDB lock table names) before running `terraform init`/`plan`/`apply` against `dev/`.

@@ -32,8 +32,29 @@ Progress log per the brief's working rhythm (Section 13): updated at the end of 
 
 ## Phase 1 — Foundation
 
-**Status:** Not started — repo/doc scaffolding only so far (module directories exist as stubs).
-Blocked on the same AWS access issue above before any `terraform apply` can run in Dev.
+**Status:** Terraform written for Dev, not yet applied.
+
+All four modules (`lake-bucket`, `glue-catalog`, `athena-workgroup`, `export-task`) and
+`terraform/envs/dev/` are implemented per Section 4/6/7. `terraform fmt` is clean; `terraform init
+-backend=false` succeeds (provider download works). `terraform validate` could not be run — the
+local AWS provider plugin handshake fails the same TLS certificate check as the AWS CLI
+(`x509: certificate signed by unknown authority`), so this looks like a machine-wide certificate
+interception/trust issue, not an AWS permissions problem. Resource arguments were reviewed by hand
+against the provider schema as a substitute.
+
+### Before first `terraform apply` in Dev
+
+- Fix the local TLS/certificate issue (affects AWS CLI and the Terraform provider plugin alike).
+- Confirm the real Terraform state bucket + DynamoDB lock table names — `envs/dev/backend.tf`
+  currently has `TODO-*` placeholders.
+- Populate `export_subnet_ids` / `export_security_group_ids` in `dev.tfvars` (Dev VPC network not
+  yet confirmed) — the export-task module's `aws_scheduler_schedule` needs real subnets to target.
+- Decide `postgres_secret_arn` and `alarm_email` once Phase 0 confirms DB access details.
+- Confirm whether AWS Budgets / cost-allocation tags are activated org-wide — `athena-workgroup`'s
+  `aws_budgets_budget` resources only get created once `alarm_email` (→
+  `budget_notification_emails`) is set.
+- Run `terraform init && terraform validate && terraform plan` for real once the above are
+  resolved, before applying.
 
 ## Phase 2 — Export pipeline
 
