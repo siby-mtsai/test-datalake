@@ -13,9 +13,14 @@ style), adapted for this project having two environments (dev, test) instead of 
 - **`deploy-locked.yaml`** ("locked") — identical, but the job runs under a
   `<environment>-locked` GitHub Environment instead of the plain one, so it can require manual
   approval before `apply`/`destroy` actually executes. Use this one for anything destructive.
+- **`debug-oidc.yml`** — decodes and prints the GitHub OIDC token's claims (`sub`, `aud`, `repo`,
+  `ref`, ...) without calling AWS. Run this first when setting up or troubleshooting a role's
+  trust policy — compare what it prints against the `token.actions.githubusercontent.com:sub`
+  condition on the `<environment>-datalake` role before wiring up
+  `aws-actions/configure-aws-credentials` for real.
 
-All three authenticate to AWS via OIDC (no long-lived AWS keys in CI) — see
-`aws-actions/configure-aws-credentials` in each file.
+The three deploy-related workflows authenticate to AWS via OIDC (no long-lived AWS keys in CI) —
+see `aws-actions/configure-aws-credentials` in each file.
 
 ## Required setup before any of these can actually run
 
