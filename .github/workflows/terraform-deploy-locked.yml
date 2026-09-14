@@ -1,0 +1,36 @@
+name: Terraform deploy (locked)
+
+# Same apply/destroy actions as "Terraform deploy (normal)", but the underlying job runs under a
+# "<environment>-locked" GitHub Environment instead of the plain "<environment>" one. Configure
+# that environment in the repo's Settings > Environments with required reviewers so a run pauses
+# for approval before terraform apply/destroy actually executes - see this directory's README.
+# Use this one for anything destructive, or for any environment beyond dev.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy."
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+      action:
+        description: "Terraform action."
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
+
+jobs:
+  run:
+    uses: ./.github/workflows/_terraform-run.yml
+    with:
+      environment: ${{ inputs.environment }}
+      action: ${{ inputs.action }}
+      github_environment: ${{ inputs.environment }}-locked
+    permissions:
+      id-token: write
+      contents: read
