@@ -57,8 +57,12 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
   `terraform/modules/athena-workgroup/main.tf` and `terraform/modules/export-task/main.tf` by
   splitting each zone's access into a `GetObject`/`PutObject` statement (object-ARN scoped, as
   before) and a separate `ListBucket` statement scoped via an `s3:prefix` `StringLike` condition
-  matching only that zone's prefix. Re-apply Test to pick this up, then re-run the same
-  assume-role + `s3 ls raw/` check (should now return `AccessDenied` for `forecasting`).
+  matching only that zone's prefix.
+- **Re-applied and re-verified (2026-09-14)**: deployed policy confirmed to match the fix
+  (`CuratedZoneGet`/`CuratedZoneList` split, `s3:prefix` condition present). Re-ran the
+  assume-role check: `forecasting` now gets `AccessDenied` on `s3 ls raw/` (previously succeeded),
+  while `s3 ls curated/` still works. Isolation between consumer roles is confirmed working for
+  Test.
 
 ### CI: GitHub Actions (mirrors `mtsai-commuter-infra`'s pattern)
 
