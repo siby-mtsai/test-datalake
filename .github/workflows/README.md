@@ -19,12 +19,11 @@ All three authenticate to AWS via OIDC (no long-lived AWS keys in CI) — see
 
 ## Required setup before any of these can actually run
 
-1. **OIDC provider + IAM role per account**: each target account (Dev `517293881120`, Test
-   `690293068614`) needs a role named `mtsai-datalake-app-role` — following the same naming
-   convention as `mtsai-commuter-infra` uses (`mtsai-commuter-app-role`) — trusting this repo's
-   GitHub OIDC provider, with permissions to manage the resources in `bootstrap/` and
-   `terraform/modules/*`. Confirm the exact name/pattern against the aws-org handoff notes if it
-   differs; update the `AWS_ROLE_ARN` line in all three workflow files if so.
+1. **OIDC provider + IAM role per account**: role name is `<environment>-datalake` — confirmed
+   for Test (`arn:aws:iam::690293068614:role/test-datalake`); Dev's is assumed to follow the same
+   pattern (`arn:aws:iam::517293881120:role/dev-datalake`) but not yet confirmed. Each needs to
+   trust this repo's GitHub OIDC provider, with permissions to manage the resources in
+   `bootstrap/` and `terraform/modules/*`.
 2. **Run `bootstrap.yaml` (or `bootstrap/` locally) once per account** so
    `mtsai-datalake-tfstate-<account_id>` and `mtsai-datalake-tflock` actually exist — until then,
    `terraform init` in `terraform/envs/dev|test` will fail (the backend in `versions.tf` points at

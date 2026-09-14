@@ -58,8 +58,10 @@ placeholders — but the buckets/table don't exist yet, so `terraform init` will
   or just run everything through `deploy.yaml`/`deploy-locked.yaml` in CI instead, which doesn't
   hit this machine's cert problem.
 - Run `bootstrap.yaml` (environment: dev) once so the state bucket/lock table exist.
-- Confirm/create the `mtsai-datalake-app-role` IAM role (OIDC trust) in the Dev account — inferred
-  from `mtsai-commuter-infra`'s `mtsai-commuter-app-role` naming convention, not yet confirmed.
+- Confirm/create the `dev-datalake` IAM role (OIDC trust) in the Dev account — role naming
+  convention is `<environment>-datalake`, confirmed for Test
+  (`arn:aws:iam::690293068614:role/test-datalake`); Dev's (`dev-datalake`) is assumed by the same
+  pattern but not yet confirmed.
 - Populate `export_subnet_ids` / `export_security_group_ids` (Dev VPC network not yet confirmed) —
   the export-task module's `aws_scheduler_schedule` needs real subnets to target. No `.tfvars`
   file is used (matching `mtsai-commuter-infra`'s convention of variable defaults only) — override

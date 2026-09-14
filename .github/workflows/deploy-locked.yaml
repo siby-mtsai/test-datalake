@@ -26,7 +26,7 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  AWS_ROLE_ARN: arn:aws:iam::${{ inputs.environment == 'dev' && '517293881120' || '690293068614' }}:role/mtsai-datalake-app-role
+  AWS_ROLE_ARN: arn:aws:iam::${{ inputs.environment == 'dev' && '517293881120' || '690293068614' }}:role/${{ inputs.environment }}-datalake
   TF_WORKING_DIR: terraform/envs/${{ inputs.environment }}
 
 permissions:
