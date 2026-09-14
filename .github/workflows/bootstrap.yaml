@@ -1,0 +1,106 @@
+name: Terraform Bootstrap
+
+# Bootstraps the S3 bucket + DynamoDB table used as remote state backend for
+# terraform/envs/{dev,test}. Mirrors mtsai-commuter-infra's bootstrap.yaml.
+# NOTE: bootstrap/ has no remote backend of its own (it creates the backend), so its state is
+# persisted across runs as a workflow artifact. This is a convenience for CI - running
+# `terraform apply` locally once is the more robust way to run this, since artifacts can expire
+# or be pruned.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Account to bootstrap."
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+      action:
+        description: "Terraform action to run"
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
+        default: apply
+
+env:
+  AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::${{ inputs.environment == 'dev' && '517293881120' || '690293068614' }}:role/mtsai-datalake-app-role
+  TF_WORKING_DIR: bootstrap
+  STATE_ARTIFACT_NAME: bootstrap-tfstate-${{ inputs.environment }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Bootstrap ${{ inputs.action }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+          output-env-credentials: true
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Restore previous state
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ env.STATE_ARTIFACT_NAME }}
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform validate
+
+      - name: Untaint resources from prior permission-denied runs
+        if: inputs.action == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform untaint aws_s3_bucket.terraform_state || true
+          terraform untaint aws_dynamodb_table.terraform_lock || true
+
+      - name: Terraform Plan
+        if: inputs.action == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: inputs.action == 'destroy'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform destroy -auto-approve
+
+      - name: Save state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.STATE_ARTIFACT_NAME }}
+          path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
+          retention-days: 90
+          overwrite: true

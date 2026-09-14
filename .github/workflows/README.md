@@ -1,37 +1,43 @@
 # .github/workflows
 
-Brief Section 8 calls for "plan on PR, apply on merge, OIDC to the target account." What's
-implemented so far is a manual-dispatch pair instead (plan-on-PR is still TODO — see below), both
-running `terraform` against `terraform/envs/{dev,test}/` via AWS OIDC (no long-lived AWS keys in
-CI):
+Mirrors the pattern already used in `mtsai-commuter-infra` (same repo layout, same workflow
+style), adapted for this project having two environments (dev, test) instead of one (prod).
 
-- **`terraform-deploy.yml`** ("normal") — runs immediately when triggered. Pick an environment
-  (`dev`/`test`) and an action (`apply`/`destroy`) from the Actions tab.
-- **`terraform-deploy-locked.yml`** ("locked") — identical inputs, but the job runs under a
+- **`bootstrap.yaml`** — creates the S3 bucket + DynamoDB table each environment's Terraform
+  state lives in. Run this once per account before `deploy.yaml`/`deploy-locked.yaml` can
+  `terraform init` for real. Has no remote backend of its own (it creates the backend), so its
+  own state round-trips through a workflow artifact between runs — a local `terraform apply` from
+  `bootstrap/` is more robust if you have credentials to run it that way instead.
+- **`deploy.yaml`** ("normal") — runs immediately when triggered. Pick `environment`
+  (`dev`/`test`) and `action` (`apply`/`destroy`) from the Actions tab.
+- **`deploy-locked.yaml`** ("locked") — identical, but the job runs under a
   `<environment>-locked` GitHub Environment instead of the plain one, so it can require manual
-  approval before `apply`/`destroy` actually executes.
-- **`_terraform-run.yml`** — the shared reusable workflow both of the above call into (init,
-  validate, plan, upload the plan as an artifact, apply). Not meant to be triggered directly.
+  approval before `apply`/`destroy` actually executes. Use this one for anything destructive.
 
-## Required setup before either workflow can actually run
+All three authenticate to AWS via OIDC (no long-lived AWS keys in CI) — see
+`aws-actions/configure-aws-credentials` in each file.
 
-1. **OIDC trust + IAM role per account** (Section 7, Phase 1 step 3): each target account
-   (Dev `517293881120`, Test `690293068614`) needs an IAM role named
-   `github-actions-terraform-datalake` (placeholder name — confirm against the aws-org handoff
-   notes and update `_terraform-run.yml`'s `Resolve target AWS account and role` step if it
-   differs) trusting this repo's GitHub OIDC provider, with permissions to manage the resources in
-   `terraform/modules/*`.
-2. **Real Terraform state backend**: `terraform/envs/{dev,test}/backend.tf` still have `TODO-*`
-   placeholder bucket/DynamoDB table names (see `docs/STATUS.md`) — `terraform init` will fail
-   until those are real.
+## Required setup before any of these can actually run
+
+1. **OIDC provider + IAM role per account**: each target account (Dev `517293881120`, Test
+   `690293068614`) needs a role named `mtsai-datalake-app-role` — following the same naming
+   convention as `mtsai-commuter-infra` uses (`mtsai-commuter-app-role`) — trusting this repo's
+   GitHub OIDC provider, with permissions to manage the resources in `bootstrap/` and
+   `terraform/modules/*`. Confirm the exact name/pattern against the aws-org handoff notes if it
+   differs; update the `AWS_ROLE_ARN` line in all three workflow files if so.
+2. **Run `bootstrap.yaml` (or `bootstrap/` locally) once per account** so
+   `mtsai-datalake-tfstate-<account_id>` and `mtsai-datalake-tflock` actually exist — until then,
+   `terraform init` in `terraform/envs/dev|test` will fail (the backend in `versions.tf` points at
+   those exact names already).
 3. **GitHub Environments**: create `dev`, `test`, `dev-locked`, `test-locked` under repo
    Settings → Environments. Add required reviewers to the `*-locked` ones only — that's what makes
-   `terraform-deploy-locked.yml` actually pause for approval; the plain ones should stay
-   unprotected so `terraform-deploy.yml` runs immediately.
-4. Populate each environment's `.tfvars` (`export_subnet_ids`, `export_security_group_ids`,
-   `postgres_secret_arn`, `alarm_email`) — currently empty placeholders.
+   `deploy-locked.yaml` actually pause for approval; the plain ones should stay unprotected so
+   `deploy.yaml` runs immediately.
+4. `export_subnet_ids` / `export_security_group_ids` / `postgres_secret_arn` / `alarm_email` in
+   each env's `terraform/envs/<env>/variables.tf` still default to empty — override with `-var`
+   flags or update the defaults once those are confirmed (brief Section 7 Phase 0/1).
 
 ## Still TODO
 
-- Plan-on-PR / apply-on-merge automation (the brief's actual Section 8 wording) — not built yet;
-  today it's manual `workflow_dispatch` only.
+- Plan-on-PR / apply-on-merge automation (brief Section 8's actual wording) — not built yet;
+  today it's all manual `workflow_dispatch`.
