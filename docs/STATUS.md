@@ -56,6 +56,12 @@ against the provider schema as a substitute.
 - Run `terraform init && terraform validate && terraform plan` for real once the above are
   resolved, before applying.
 
+`terraform/envs/test/` (account `690293068614`) is also scaffolded now, same structure and same
+blockers as Dev above (its `backend.tf` has the same `TODO-*` placeholders, its `test.tfvars` has
+the same empty subnet/security-group/secret-ARN placeholders). Per brief Section 7 the intended
+order is Dev first — verify `plan`/`apply` and the Phase 1 "done when" there — then promote to
+Test; Test was scaffolded ahead of that for convenience but should not be applied first.
+
 ## Phase 2 — Export pipeline
 
 **Status:** Not started.
