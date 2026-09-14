@@ -34,7 +34,8 @@ Progress log per the brief's working rhythm (Section 13): updated at the end of 
 
 ## Phase 1 — Foundation
 
-**Status:** Applied and verified in Test. Not yet applied in Dev.
+**Status:** Applied and verified in Test. Dev is deprioritized (not in scope right now — see
+below).
 
 All four modules (`lake-bucket`, `glue-catalog`, `athena-workgroup`, `export-task`) are
 implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three roots
@@ -72,26 +73,24 @@ placeholders — but the buckets/table don't exist yet, so `terraform init` will
 `bootstrap.yaml` (or a local `terraform apply` in `bootstrap/`) is actually run once per account.
 Already done for Test (`mtsai-datalake-tfstate-690293068614` / `mtsai-datalake-tflock` exist).
 
-### Before first `terraform apply` in Dev
+### Dev — deprioritized
 
-- Run `bootstrap.yaml` (environment: dev) once so the state bucket/lock table exist.
-- Confirm/create the `dev-datalake` IAM role (OIDC trust) in the Dev account — role naming
-  convention is `<environment>-datalake`, confirmed for Test
-  (`arn:aws:iam::690293068614:role/test-datalake`); Dev's (`dev-datalake`) is assumed by the same
-  pattern but not yet confirmed.
-- Populate `export_subnet_ids` / `export_security_group_ids` (Dev VPC network not yet confirmed) —
-  the export-task module's `aws_scheduler_schedule` needs real subnets to target. No `.tfvars`
-  file is used (matching `mtsai-commuter-infra`'s convention of variable defaults only) — override
-  via `-var` or update the defaults in `terraform/envs/dev/variables.tf` directly.
+Per explicit direction: **Dev is not being pursued right now** — all active work is on Test
+(`690293068614`) only. `terraform/envs/dev/` stays scaffolded (fmt/validate clean) as a reference
+but is not being applied, and isn't blocking anything. Revisit this section if that changes.
+
+### Outstanding for Test
+
+- Re-apply Test via `deploy.yaml` to roll out the `s3:ListBucket` fix above, then re-verify with
+  the assume-role check.
+- Populate `export_subnet_ids` / `export_security_group_ids` in
+  `terraform/envs/test/variables.tf` once Test's VPC network is decided — the export-task
+  module's `aws_scheduler_schedule` needs real subnets to target (currently skipped since both
+  default to empty).
 - Decide `postgres_secret_arn` and `alarm_email` once Phase 0 confirms DB access details.
 - Confirm whether AWS Budgets / cost-allocation tags are activated org-wide — `athena-workgroup`'s
   `aws_budgets_budget` resources only get created once `alarm_email` (→
   `budget_notification_emails`) is set.
-
-`terraform/envs/test/` (account `690293068614`) is scaffolded the same way, same blockers as Dev
-above. Per brief Section 7 the intended order is Dev first — verify `plan`/`apply` and the Phase 1
-"done when" there — then promote to Test; Test was scaffolded ahead of that for convenience but
-should not be applied first.
 
 ## Phase 2 — Export pipeline
 
