@@ -81,25 +81,65 @@ data "aws_iam_policy_document" "consumer_access" {
     }
   }
 
+  # s3:ListBucket is a bucket-level action - granting it on the bare bucket ARN, even alongside a
+  # prefix-scoped s3:GetObject, allows listing (enumerating keys under) the WHOLE bucket, not just
+  # the granted prefix. It must be scoped separately via an s3:prefix condition, or every consumer
+  # can enumerate every other zone's object keys regardless of their GetObject restrictions.
   statement {
-    sid       = "CuratedZoneRead"
-    actions   = ["s3:GetObject", "s3:ListBucket"]
-    resources = ["arn:aws:s3:::${var.bucket_name}/curated/*", "arn:aws:s3:::${var.bucket_name}"]
+    sid       = "CuratedZoneGet"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${var.bucket_name}/curated/*"]
+  }
+
+  statement {
+    sid       = "CuratedZoneList"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["curated", "curated/*"]
+    }
   }
 
   dynamic "statement" {
     for_each = each.value.raw_zone_read_access ? [1] : []
     content {
-      sid       = "RawZoneRead"
-      actions   = ["s3:GetObject", "s3:ListBucket"]
-      resources = ["arn:aws:s3:::${var.bucket_name}/raw/*", "arn:aws:s3:::${var.bucket_name}"]
+      sid       = "RawZoneGet"
+      actions   = ["s3:GetObject"]
+      resources = ["arn:aws:s3:::${var.bucket_name}/raw/*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.raw_zone_read_access ? [1] : []
+    content {
+      sid       = "RawZoneList"
+      actions   = ["s3:ListBucket"]
+      resources = ["arn:aws:s3:::${var.bucket_name}"]
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values   = ["raw", "raw/*"]
+      }
     }
   }
 
   statement {
     sid       = "AthenaResultsReadWrite"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-    resources = ["arn:aws:s3:::${var.bucket_name}/athena-results/${each.key}/*", "arn:aws:s3:::${var.bucket_name}"]
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["arn:aws:s3:::${var.bucket_name}/athena-results/${each.key}/*"]
+  }
+
+  statement {
+    sid       = "AthenaResultsList"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.bucket_name}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["athena-results/${each.key}", "athena-results/${each.key}/*"]
+    }
   }
 
   statement {

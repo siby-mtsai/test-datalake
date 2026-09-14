@@ -8,11 +8,15 @@ Progress log per the brief's working rhythm (Section 13): updated at the end of 
 
 ### Blockers
 
-- **AWS access to Dev account** (`517293881120`, `miracletraffic-india-dev`): AWS CLI has a
-  `default` profile configured locally, but every call fails SSL certificate verification
-  (`SSL: CERTIFICATE_VERIFY_FAILED`). Looks like a local/corporate proxy CA issue rather than a
-  permissions problem — needs to be fixed before any AWS calls (including Athena/Glue setup in
-  Phase 1) will work from this machine.
+- ~~AWS access to Dev account~~ **Resolved.** The `SSL: CERTIFICATE_VERIFY_FAILED` errors from
+  AWS CLI, the Terraform provider plugin, and intermittently `git push` were all the same root
+  cause: **Avast Antivirus's "Web/Mail Shield" HTTPS scanning** on this machine was
+  man-in-the-middling all TLS connections and re-signing them with its own CA
+  (`issuer=... CN=Avast Web/Mail Shield Root`). Terraform (Go) trusted it via the Windows system
+  cert store; AWS CLI (Python/botocore) does not, hence the failures. Disabling Avast's HTTPS
+  scanning fixed AWS CLI, `terraform validate`, and git access immediately — no CA bundle
+  workaround needed. If this resurfaces on another machine, check for the same interception
+  pattern before assuming an AWS permissions problem.
 - **Postgres (`mtsai-api`) read access**: no connection string, `.pgpass`, or DB driver available
   in this environment. Need either a read-replica connection string or a dedicated low-privilege
   role (per Section 4, "Source" row), plus a Postgres client to run the discovery queries with.
@@ -30,15 +34,30 @@ Progress log per the brief's working rhythm (Section 13): updated at the end of 
 
 ## Phase 1 — Foundation
 
-**Status:** Terraform written for Dev, not yet applied.
+**Status:** Applied and verified in Test. Not yet applied in Dev.
 
-All four modules (`lake-bucket`, `glue-catalog`, `athena-workgroup`, `export-task`) and
-`terraform/envs/dev/` are implemented per Section 4/6/7. `terraform fmt` is clean; `terraform init
--backend=false` succeeds (provider download works). `terraform validate` could not be run — the
-local AWS provider plugin handshake fails the same TLS certificate check as the AWS CLI
-(`x509: certificate signed by unknown authority`), so this looks like a machine-wide certificate
-interception/trust issue, not an AWS permissions problem. Resource arguments were reviewed by hand
-against the provider schema as a substitute.
+All four modules (`lake-bucket`, `glue-catalog`, `athena-workgroup`, `export-task`) are
+implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three roots
+(`bootstrap/`, `envs/dev/`, `envs/test/`) now that the TLS issue above is resolved.
+
+**Test account (690293068614) was applied via `deploy.yaml`** and manually verified end-to-end:
+- Created an Iceberg table by hand in `test_raw`, confirmed a CTAS into `test_curated` worked.
+- Ran the actual isolation test the brief's Phase 1 "done when" implies: assumed the
+  `mtsai-datalake-test-forecasting` role directly (`aws sts assume-role`, not just switching
+  Athena workgroups while signed in as an admin role — that doesn't test anything, since the
+  workgroup selection doesn't change the calling identity) and confirmed its real S3 access.
+- **Found and fixed a real bug**: `s3:ListBucket` was granted on the bare bucket ARN in the
+  `CuratedZoneRead` and `AthenaResultsReadWrite` statements (and the equivalent
+  `WriteRawAndManifests` statement in `export-task`), with no `s3:prefix` condition.
+  `s3:ListBucket` is a bucket-level action — granting it unconditionally let every consumer role
+  enumerate (list keys under) the *entire* bucket, including `raw/`, even though `s3:GetObject`
+  was correctly scoped to `curated/*` only. So `forecasting` could list `raw/test_table/` (key
+  enumeration leak) but still could not actually read its contents. Fixed in
+  `terraform/modules/athena-workgroup/main.tf` and `terraform/modules/export-task/main.tf` by
+  splitting each zone's access into a `GetObject`/`PutObject` statement (object-ARN scoped, as
+  before) and a separate `ListBucket` statement scoped via an `s3:prefix` `StringLike` condition
+  matching only that zone's prefix. Re-apply Test to pick this up, then re-run the same
+  assume-role + `s3 ls raw/` check (should now return `AccessDenied` for `forecasting`).
 
 ### CI: GitHub Actions (mirrors `mtsai-commuter-infra`'s pattern)
 
@@ -51,12 +70,10 @@ against the provider schema as a substitute.
 `bootstrap/` module (root of the repo) that creates them. No more `TODO-*` bucket/table
 placeholders — but the buckets/table don't exist yet, so `terraform init` will still fail until
 `bootstrap.yaml` (or a local `terraform apply` in `bootstrap/`) is actually run once per account.
+Already done for Test (`mtsai-datalake-tfstate-690293068614` / `mtsai-datalake-tflock` exist).
 
 ### Before first `terraform apply` in Dev
 
-- Fix the local TLS/certificate issue (affects AWS CLI and the Terraform provider plugin alike) —
-  or just run everything through `deploy.yaml`/`deploy-locked.yaml` in CI instead, which doesn't
-  hit this machine's cert problem.
 - Run `bootstrap.yaml` (environment: dev) once so the state bucket/lock table exist.
 - Confirm/create the `dev-datalake` IAM role (OIDC trust) in the Dev account — role naming
   convention is `<environment>-datalake`, confirmed for Test

@@ -77,10 +77,25 @@ resource "aws_iam_role" "task" {
 }
 
 data "aws_iam_policy_document" "task_access" {
+  # s3:ListBucket is a bucket-level action - granting it on the bare bucket ARN (even alongside
+  # prefix-scoped s3:PutObject/GetObject) allows listing the WHOLE bucket, not just raw/ and
+  # export-manifests/. Scope it separately via an s3:prefix condition (see the same fix applied
+  # to terraform/modules/athena-workgroup/main.tf, found via a real isolation test).
   statement {
     sid       = "WriteRawAndManifests"
-    actions   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-    resources = ["${var.bucket_arn}/raw/*", "${var.bucket_arn}/export-manifests/*", var.bucket_arn]
+    actions   = ["s3:PutObject", "s3:GetObject"]
+    resources = ["${var.bucket_arn}/raw/*", "${var.bucket_arn}/export-manifests/*"]
+  }
+
+  statement {
+    sid       = "ListRawAndManifests"
+    actions   = ["s3:ListBucket"]
+    resources = [var.bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["raw", "raw/*", "export-manifests", "export-manifests/*"]
+    }
   }
 
   statement {
