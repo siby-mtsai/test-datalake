@@ -164,8 +164,18 @@ resource "aws_ecs_task_definition" "export" {
 data "aws_region" "current" {}
 
 # --- Nightly schedule (EventBridge Scheduler -> ecs:RunTask) ---
+# Fargate tasks need a VPC network config (subnets + security groups) to run at all, and neither
+# is confirmed yet (brief Section 7 Phase 0 - VPC/network not yet decided). Rather than block the
+# rest of Phase 1 (bucket, Glue, Athena workgroups) on that, the schedule itself - and the IAM role
+# that only exists to run it - are only created once both are actually supplied.
+
+locals {
+  export_schedule_enabled = length(var.subnet_ids) > 0 && length(var.security_group_ids) > 0
+}
 
 data "aws_iam_policy_document" "scheduler_trust" {
+  count = local.export_schedule_enabled ? 1 : 0
+
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -176,12 +186,15 @@ data "aws_iam_policy_document" "scheduler_trust" {
 }
 
 resource "aws_iam_role" "scheduler" {
+  count              = local.export_schedule_enabled ? 1 : 0
   name               = "mtsai-datalake-${var.environment}-export-scheduler"
-  assume_role_policy = data.aws_iam_policy_document.scheduler_trust.json
+  assume_role_policy = data.aws_iam_policy_document.scheduler_trust[0].json
   tags               = var.tags
 }
 
 data "aws_iam_policy_document" "scheduler_run_task" {
+  count = local.export_schedule_enabled ? 1 : 0
+
   statement {
     actions   = ["ecs:RunTask"]
     resources = [replace(aws_ecs_task_definition.export.arn, "/:\\d+$/", ":*")]
@@ -199,12 +212,14 @@ data "aws_iam_policy_document" "scheduler_run_task" {
 }
 
 resource "aws_iam_role_policy" "scheduler_run_task" {
+  count  = local.export_schedule_enabled ? 1 : 0
   name   = "run-export-task"
-  role   = aws_iam_role.scheduler.id
-  policy = data.aws_iam_policy_document.scheduler_run_task.json
+  role   = aws_iam_role.scheduler[0].id
+  policy = data.aws_iam_policy_document.scheduler_run_task[0].json
 }
 
 resource "aws_scheduler_schedule" "nightly_export" {
+  count      = local.export_schedule_enabled ? 1 : 0
   name       = "mtsai-datalake-${var.environment}-nightly-export"
   group_name = "default"
 
@@ -216,7 +231,7 @@ resource "aws_scheduler_schedule" "nightly_export" {
 
   target {
     arn      = aws_ecs_cluster.export.arn
-    role_arn = aws_iam_role.scheduler.arn
+    role_arn = aws_iam_role.scheduler[0].arn
 
     ecs_parameters {
       task_definition_arn = aws_ecs_task_definition.export.arn
