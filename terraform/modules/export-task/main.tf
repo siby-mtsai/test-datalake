@@ -105,11 +105,39 @@ data "aws_iam_policy_document" "task_access" {
   }
 
   statement {
+    sid       = "CommitToIcebergQuery"
+    actions   = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"]
+    resources = ["*"] # No dedicated workgroup for the export task yet; revisit once Phase 2 gives it one.
+  }
+
+  # Same trap as terraform/modules/athena-workgroup/main.tf's GlueCuratedRead/GlueCatalogRoot:
+  # tag-based conditions don't work for Glue tables (created via CTAS/INSERT, not Terraform, so
+  # never carry a tag) or the catalog root (a fixed, un-taggable singleton) - scope by explicit
+  # Glue ARN instead.
+  # Glue's authorization model checks the WHOLE resource hierarchy for any action that touches a
+  # table - it requires an Allow on the catalog resource AND the database/table resource, not just
+  # the most specific one (found via a real AccessDeniedException naming the catalog ARN even
+  # though the database/table ARNs were already granted - see the same fix in
+  # athena-workgroup/main.tf for the read-side discovery). Covers both read and write actions since
+  # this role also creates/updates tables.
+  statement {
+    sid = "GlueCatalogRoot"
+    actions = [
+      "glue:GetDatabase",
+      "glue:GetDatabases",
+      "glue:GetTable",
+      "glue:GetTables",
+      "glue:GetPartitions",
+      "glue:CreateTable",
+      "glue:UpdateTable",
+      "glue:BatchCreatePartition",
+    ]
+    resources = ["arn:aws:glue:*:${var.account_id}:catalog"]
+  }
+
+  statement {
     sid = "CommitToIceberg"
     actions = [
-      "athena:StartQueryExecution",
-      "athena:GetQueryExecution",
-      "athena:GetQueryResults",
       "glue:GetDatabase",
       "glue:GetTable",
       "glue:GetTables",
@@ -118,12 +146,10 @@ data "aws_iam_policy_document" "task_access" {
       "glue:UpdateTable",
       "glue:BatchCreatePartition",
     ]
-    resources = ["*"]
-    condition {
-      test     = "StringEquals"
-      variable = "aws:ResourceTag/Environment"
-      values   = [var.environment]
-    }
+    resources = [
+      "arn:aws:glue:*:${var.account_id}:database/${var.raw_database_name}",
+      "arn:aws:glue:*:${var.account_id}:table/${var.raw_database_name}/*",
+    ]
   }
 }
 

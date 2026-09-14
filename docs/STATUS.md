@@ -58,11 +58,37 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
   splitting each zone's access into a `GetObject`/`PutObject` statement (object-ARN scoped, as
   before) and a separate `ListBucket` statement scoped via an `s3:prefix` `StringLike` condition
   matching only that zone's prefix.
-- **Re-applied and re-verified (2026-09-14)**: deployed policy confirmed to match the fix
-  (`CuratedZoneGet`/`CuratedZoneList` split, `s3:prefix` condition present). Re-ran the
-  assume-role check: `forecasting` now gets `AccessDenied` on `s3 ls raw/` (previously succeeded),
-  while `s3 ls curated/` still works. Isolation between consumer roles is confirmed working for
-  Test.
+- **Re-applied and re-verified at the S3 level (2026-09-14)**: `forecasting` now gets
+  `AccessDenied` on `s3 ls raw/` (previously succeeded), while `s3 ls curated/` still works.
+- **Then verified at the actual Athena query level** (not just raw S3 calls), which surfaced two
+  more real, pre-existing gaps that had simply never been exercised before (nobody had run a
+  query as a restricted consumer role until now):
+  1. `s3:GetBucketLocation` on the results bucket was never granted anywhere - Athena calls it to
+     verify the output bucket before running any query at all, for every consumer, regardless of
+     which zone. Without it, every query failed with "Unable to verify/create output bucket."
+  2. The whole `aws:ResourceTag/Environment`-tag-based approach to scoping Glue reads was broken
+     by design: Glue *tables* are created by hand via Athena DDL/CTAS (exactly as Phase 1 step 4
+     describes), not by Terraform, so they never receive the tag from a provider's `default_tags`
+     — meaning `glue:GetTable` silently failed the tag condition for every real table, which
+     Athena surfaced as a confusing `TABLE_NOT_FOUND` rather than an access-denied error. Fixed by
+     scoping Glue reads with explicit ARNs
+     (`arn:aws:glue:*:<account>:database/<db>` / `.../table/<db>/*`) instead of tags - this also
+     properly isolates raw-zone *metadata* by zone, which the tag approach never did either.
+     Additionally, Glue's authorization model turned out to check the *entire* resource hierarchy
+     for any action touching a table — reading `test_table_curated` required an explicit Allow on
+     the catalog resource (`arn:...:catalog`) *and* the database/table ARNs, not just the most
+     specific one; missing the catalog-level grant for `GetTable`/`GetTables`/`GetPartition(s)`
+     (as opposed to just `GetDatabase`/`GetDatabases`) was the last thing blocking a legitimate
+     `curated` read even after every other permission was correct.
+  Both fixes applied to `terraform/modules/athena-workgroup/main.tf` and the equivalent statements
+  in `terraform/modules/export-task/main.tf` (which will hit the same Glue-write version of this
+  once Phase 2's export job actually runs).
+- **Fully re-verified end-to-end (2026-09-14)**: as `forecasting`, `SELECT * FROM test_table_curated`
+  (database `test_curated`) → `SUCCEEDED`; `SELECT * FROM test_table` (database `test_raw`) →
+  clean `AccessDenied` on `glue:GetDatabase`, not a confusing `TABLE_NOT_FOUND`. As `audit` (which
+  *should* retain raw access), the same raw query → `SUCCEEDED`, confirming the fixes didn't
+  over-restrict legitimate access. Isolation between consumer roles is genuinely working now, not
+  just believed to be from reading the Terraform.
 
 ### CI: GitHub Actions (mirrors `mtsai-commuter-infra`'s pattern)
 

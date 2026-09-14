@@ -3,6 +3,11 @@ variable "environment" {
   type        = string
 }
 
+variable "account_id" {
+  description = "AWS account ID, used to scope Glue catalog/database/table ARNs precisely."
+  type        = string
+}
+
 variable "bucket_arn" {
   description = "Lake bucket ARN (from the lake-bucket module)."
   type        = string

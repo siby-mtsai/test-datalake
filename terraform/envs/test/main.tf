@@ -39,6 +39,7 @@ module "export_task" {
   source = "../../modules/export-task"
 
   environment         = var.environment
+  account_id          = var.account_id
   bucket_arn          = module.lake_bucket.bucket_arn
   bucket_name         = module.lake_bucket.bucket_name
   kms_key_arn         = module.lake_bucket.kms_key_arn

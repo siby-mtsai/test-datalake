@@ -63,8 +63,15 @@ data "aws_iam_policy_document" "consumer_access" {
     resources = [aws_athena_workgroup.consumer[each.key].arn]
   }
 
+  # Glue's authorization model checks the WHOLE resource hierarchy for any action that touches a
+  # table - reading a table requires an Allow on the catalog resource AND the database resource
+  # AND the table resource, not just the most specific one. This statement covers the catalog
+  # level (a fixed, un-taggable singleton, so it can't use the tag-based approach anyway); the
+  # GlueCuratedRead/GlueRawRead statements below cover the database/table level. Both are required
+  # together - found the hard way via a real AccessDeniedException naming the catalog ARN even
+  # though the database/table ARNs were already correctly granted.
   statement {
-    sid = "GlueCatalogRead"
+    sid = "GlueCatalogRoot"
     actions = [
       "glue:GetDatabase",
       "glue:GetDatabases",
@@ -73,12 +80,58 @@ data "aws_iam_policy_document" "consumer_access" {
       "glue:GetPartition",
       "glue:GetPartitions",
     ]
-    resources = ["*"] # Glue catalog resources are account-scoped; narrowed via database name below.
-    condition {
-      test     = "StringEquals"
-      variable = "aws:ResourceTag/Environment"
-      values   = [var.environment]
+    resources = ["arn:aws:glue:*:${var.account_id}:catalog"]
+  }
+
+  # Scoped by explicit Glue ARN (catalog/database/table hierarchy), not by resource tag: tables
+  # are created by hand via Athena DDL/CTAS (brief Section 7, Phase 1 step 4), not by Terraform,
+  # so they never get the Environment tag from a provider's default_tags - a tag-based condition
+  # here would silently deny glue:GetTable on every real table (Athena surfaces that as a
+  # confusing TABLE_NOT_FOUND, not a permission error, which is how this was actually found).
+  # Scoping by database ARN also properly isolates raw-zone metadata by zone, which the previous
+  # environment-wide tag condition never did.
+  statement {
+    sid = "GlueCuratedRead"
+    actions = [
+      "glue:GetDatabase",
+      "glue:GetTable",
+      "glue:GetTables",
+      "glue:GetPartition",
+      "glue:GetPartitions",
+    ]
+    resources = [
+      "arn:aws:glue:*:${var.account_id}:database/${var.curated_database_name}",
+      "arn:aws:glue:*:${var.account_id}:table/${var.curated_database_name}/*",
+    ]
+  }
+
+  dynamic "statement" {
+    for_each = each.value.raw_zone_read_access ? [1] : []
+    content {
+      sid = "GlueRawRead"
+      actions = [
+        "glue:GetDatabase",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:GetPartition",
+        "glue:GetPartitions",
+      ]
+      resources = [
+        "arn:aws:glue:*:${var.account_id}:database/${var.raw_database_name}",
+        "arn:aws:glue:*:${var.account_id}:table/${var.raw_database_name}/*",
+      ]
     }
+  }
+
+  # Athena calls s3:GetBucketLocation on the results bucket to verify it before running any
+  # query at all - a bucket-level action with no "prefix" concept, so it can't be scoped by
+  # s3:prefix like the ListBucket statements below. Missing this produces "Unable to
+  # verify/create output bucket" on every query, for every consumer, regardless of which zone
+  # they're actually querying.
+  statement {
+    sid       = "ResultsBucketLocation"
+    actions   = ["s3:GetBucketLocation"]
+    resources = ["arn:aws:s3:::${var.bucket_name}"]
   }
 
   # s3:ListBucket is a bucket-level action - granting it on the bare bucket ARN, even alongside a
