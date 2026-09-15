@@ -104,6 +104,26 @@ data "aws_iam_policy_document" "task_access" {
     resources = [var.kms_key_arn]
   }
 
+  # No dedicated Athena workgroup exists for this role (see CommitToIcebergQuery below), so every
+  # query must pass its own ResultConfiguration.OutputLocation explicitly - which needs its own
+  # write access, separate from raw/ and export-manifests/.
+  statement {
+    sid       = "AthenaResultsReadWrite"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${var.bucket_arn}/athena-results/export/*"]
+  }
+
+  statement {
+    sid       = "AthenaResultsList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["athena-results/export", "athena-results/export/*"]
+    }
+  }
+
   statement {
     sid       = "CommitToIcebergQuery"
     actions   = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"]
@@ -130,6 +150,7 @@ data "aws_iam_policy_document" "task_access" {
       "glue:GetPartitions",
       "glue:CreateTable",
       "glue:UpdateTable",
+      "glue:DeleteTable", # needed to drop the throwaway staging table each run creates and cleans up
       "glue:BatchCreatePartition",
     ]
     resources = ["arn:aws:glue:*:${var.account_id}:catalog"]
@@ -144,6 +165,7 @@ data "aws_iam_policy_document" "task_access" {
       "glue:GetPartitions",
       "glue:CreateTable",
       "glue:UpdateTable",
+      "glue:DeleteTable",
       "glue:BatchCreatePartition",
     ]
     resources = [

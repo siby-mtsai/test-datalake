@@ -1,0 +1,17 @@
+# Table export definitions. One entry per source table. Baked into the container image at
+# /etc/mtsai-datalake-export/tables.yaml; override via CONFIG_PATH for local runs.
+#
+# This is a synthetic CITY_ZZ-style fixture standing in for real mtsai-api tables until Phase 0
+# discovery (docs/phase0-inventory-template.md) actually inventories the source schema.
+tables:
+  - name: trip_events
+    partition_columns: [city_code, event_date]
+    primary_key: trip_id
+    columns:
+      - { name: trip_id, type: bigint }
+      - { name: vehicle_id_hash, type: string }
+      - { name: city_code, type: string }
+      - { name: event_date, type: date }
+      - { name: distance_km, type: double }
+      - { name: fare_amount, type: double }
+      - { name: created_at, type: timestamp }

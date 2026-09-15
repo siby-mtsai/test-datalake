@@ -1,0 +1,20 @@
+# Local Postgres for integration-testing the export job, seeded with synthetic fixture data -
+# matches the brief's own stated convention (Section 8: "integration tests for the export job
+# run against a Postgres container with the CITY_ZZ fixtures"). Not used in production; the real
+# export job connects to the actual mtsai-api RDS instance via POSTGRES_CREDENTIALS.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: export_test
+      POSTGRES_PASSWORD: export_test
+      POSTGRES_DB: mtsai_export_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./fixtures/trip_events.sql:/docker-entrypoint-initdb.d/01-trip_events.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U export_test -d mtsai_export_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
