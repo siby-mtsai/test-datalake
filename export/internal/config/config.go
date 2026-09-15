@@ -28,10 +28,10 @@ type Column struct {
 }
 
 type Table struct {
-	Name              string   `yaml:"name"`
-	PartitionColumns  []string `yaml:"partition_columns"`
-	PrimaryKey        string   `yaml:"primary_key"`
-	Columns           []Column `yaml:"columns"`
+	Name             string   `yaml:"name"`
+	PartitionColumns []string `yaml:"partition_columns"`
+	PrimaryKey       string   `yaml:"primary_key"`
+	Columns          []Column `yaml:"columns"`
 }
 
 type tablesFile struct {

@@ -1,5 +1,5 @@
 # Matches terraform/modules/export-task's Fargate task definition: ARM64, Linux.
-FROM --platform=linux/arm64 golang:1.23-bookworm AS build
+FROM --platform=linux/arm64 golang:1.27-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

@@ -3,6 +3,7 @@ package lake
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -12,7 +13,7 @@ type CommitInput struct {
 	RunID         string    // unique per run, used to name the throwaway staging table
 	StagingS3Path string    // s3://bucket/raw/_staging/<table>/<run_id>/ - where the Parquet file was uploaded
 	RunDate       time.Time // the single event_date this batch covers
-	DDLColumns    string    // Hive DDL column list, e.g. "trip_id bigint, city_code string, ..."
+	DDLColumns    string    // Trino DDL column list, e.g. "trip_id bigint, city_code varchar, ..."
 }
 
 // CommitToIceberg commits a batch of freshly-uploaded Parquet data into an existing Iceberg
@@ -20,7 +21,15 @@ type CommitInput struct {
 // (INSERT INTO...) - prefer the Athena route for simplicity in v1"). It never touches Iceberg
 // metadata JSON directly:
 //
-//  1. Register the staging Parquet as a throwaway Hive-style external table.
+//  1. Register the staging Parquet as a throwaway Hive-style external table
+//     (`CREATE EXTERNAL TABLE ... STORED AS PARQUET LOCATION ...`). Found two real syntax traps
+//     by actually running this against Athena's SQL engine v3: a plain `CREATE TABLE ... WITH
+//     (external_location = ..., ...)` (Trino's usual external-table form) is rejected - Athena's
+//     WITH-clause form is CTAS-only (`CREATE TABLE ... WITH (...) AS SELECT ...`), not valid for
+//     a bare column-list declaration. And `CREATE EXTERNAL TABLE IF NOT EXISTS ...` is rejected
+//     too - "IF NOT EXISTS" isn't accepted together with EXTERNAL here (unclear why; not
+//     documented), even though it's harmless to drop since each staging table name already has a
+//     unique run ID suffix.
 //  2. DELETE any existing rows for this event_date from the real Iceberg table - this is what
 //     makes a re-run of the same (table, event_date) replace rather than duplicate (brief:
 //     "re-running a completed key must replace, not duplicate... use Iceberg overwrite of the
@@ -31,10 +40,13 @@ type CommitInput struct {
 //  4. Drop the staging table (data of record now lives in the Iceberg table; the staging Parquet
 //     itself is left in S3 under raw/_staging/ for now - not yet wired into a lifecycle rule).
 func CommitToIceberg(ctx context.Context, runner *AthenaRunner, in CommitInput) error {
-	stagingTable := fmt.Sprintf("%s_staging_%s", in.Table, in.RunID)
+	// UUIDs contain hyphens, which aren't valid in an unquoted Trino identifier - strip them
+	// rather than quote the identifier everywhere it's referenced.
+	runIDForIdentifier := strings.ReplaceAll(in.RunID, "-", "")
+	stagingTable := fmt.Sprintf("%s_staging_%s", in.Table, runIDForIdentifier)
 
 	createStaging := fmt.Sprintf(
-		`CREATE EXTERNAL TABLE IF NOT EXISTS %s (%s) STORED AS PARQUET LOCATION '%s'`,
+		`CREATE EXTERNAL TABLE %s (%s) STORED AS PARQUET LOCATION '%s'`,
 		stagingTable, in.DDLColumns, in.StagingS3Path,
 	)
 	if _, err := runner.Run(ctx, createStaging); err != nil {

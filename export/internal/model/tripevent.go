@@ -2,16 +2,19 @@
 // trip_events, a synthetic fixture standing in for a real mtsai-api table until Phase 0
 // discovery happens. Adding a second real table means adding its own typed struct here (and
 // its own reader/writer wiring) - see export/README.md for why this isn't schema-generic yet.
+//
+// No parquet struct tags here - see internal/parquetw for why EventDate needs its own
+// Parquet-specific representation and a separate struct.
 package model
 
 import "time"
 
 type TripEvent struct {
-	TripID        int64     `parquet:"trip_id"`
-	VehicleIDHash string    `parquet:"vehicle_id_hash"`
-	CityCode      string    `parquet:"city_code"`
-	EventDate     time.Time `parquet:"event_date,date"`
-	DistanceKM    float64   `parquet:"distance_km"`
-	FareAmount    float64   `parquet:"fare_amount"`
-	CreatedAt     time.Time `parquet:"created_at,timestamp"`
+	TripID        int64
+	VehicleIDHash string
+	CityCode      string
+	EventDate     time.Time
+	DistanceKM    float64
+	FareAmount    float64
+	CreatedAt     time.Time
 }

@@ -29,6 +29,8 @@ import (
 	"mtsai-datalake-export/internal/source"
 )
 
+// Hive DDL types (this is CREATE EXTERNAL TABLE, not a Trino WITH-clause CTAS - see
+// internal/lake/iceberg.go for why), confirmed against real Athena: "string", not "varchar".
 const tripEventsDDLColumns = "trip_id bigint, vehicle_id_hash string, city_code string, " +
 	"event_date date, distance_km double, fare_amount double, created_at timestamp"
 

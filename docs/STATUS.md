@@ -123,8 +123,11 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
 - KMS key has no custom key policy — Section 6 says it should restrict usage to "the export role,
   Athena workgroup roles, and account break-glass role only," but currently relies on IAM alone
   (AWS default key policy).
-- Export-task's own IAM role/Glue-write permissions have never been exercised by an actual
-  container run (no export job exists yet - Phase 2).
+- Export-task's own IAM role has still never actually been assumed and used — the Phase 2 v1
+  slice exercised the same S3/Glue/Athena *calls* the role needs to make (which is how its two
+  permission gaps got found and fixed), but ran under the tester's own admin credentials, not the
+  `export-task` role itself. Genuinely confirming the role's policy is sufficient (not just
+  "should be, by inspection") needs either `sts assume-role` into it or an actual container run.
 - The CloudWatch alarm / SNS notification path for ECS task failures has never been triggered.
 - `aws_budgets_budget` resources aren't created yet (`alarm_email` is empty).
 
@@ -162,7 +165,48 @@ but is not being applied, and isn't blocking anything. Revisit this section if t
 
 ## Phase 2 — Export pipeline
 
-**Status:** Not started.
+**Status:** v1 slice built and verified end-to-end (2026-09-15) — one table only, not deployed.
+
+Go export job (`export/`, module `mtsai-datalake-export`) that reads Postgres via a server-side
+cursor, writes Parquet, uploads to S3, commits into an Iceberg table via Athena, reconciles row
+count/checksum, and writes a manifest. Handles exactly one table so far: `trip_events`, a
+synthetic fixture (see `export/README.md` for why it's not schema-generic yet). Real `mtsai-api`
+Postgres access still doesn't exist (Phase 0 still blocked), so this was tested against a local
+Docker Postgres seeded with fixture data — matches the brief's own stated testing convention
+(Section 8) — while every AWS-side call (S3, Glue, Athena) hit the real Test account.
+
+**Also created**: the `trip_events` Iceberg table itself in `test_raw` (brief Phase 1 step 4 — "one
+Iceberg table by hand" — hadn't actually named `trip_events` before this; only the generic
+`test_table` from earlier isolation testing existed).
+
+**Three real bugs found and fixed by actually running it** (none of these would show up in code
+review or `go build`):
+1. Athena's SQL engine v3 (Trino-based) rejects a plain `CREATE TABLE ... WITH (external_location
+   = ..., ...)` statement without an `AS SELECT` — that form is CTAS-only. Registering existing S3
+   files as a table needs classic Hive DDL: `CREATE EXTERNAL TABLE ... STORED AS PARQUET LOCATION
+   ...`.
+2. That same DDL rejects `IF NOT EXISTS` when combined with `EXTERNAL` (undocumented, confirmed
+   empirically) — dropped it; harmless since each staging table name already has a unique run-ID
+   suffix.
+3. `parquet-go`'s reflection-based `time.Time` writer only correctly encodes the `Timestamp`
+   logical type (physical `int64`); for `Date` (physical `int32`) it still writes a raw nanosecond
+   `int64` into the `int32` slot, producing garbage (`event_date` round-tripped as
+   `-1454296-02-29`). Worked around by encoding the date manually as days-since-epoch (`int32`)
+   in a Parquet-specific struct, confirmed via source inspection of the library
+   (`column_buffer_write.go`), not by guessing an AWS/SQL syntax fix.
+
+**Also fixed**: two IAM gaps in the already-deployed `export-task` role (S3 access to write Athena
+query results anywhere, `glue:DeleteTable` for staging-table cleanup) — found while designing the
+job's actual calls, applied to Test.
+
+**Verified**: read 5 rows → uploaded → committed → reconciled (checksum matched) → manifest
+correct; re-ran for the same date and confirmed the row count stayed at 5, not 10 (idempotency);
+`docker build --platform linux/arm64` succeeds for the container image (not pushed anywhere yet).
+
+**Explicitly out of scope for this slice** (see `export/README.md`): pushing the image to ECR /
+wiring it into the ECS task definition, the real EventBridge schedule actually triggering it
+(still blocked on VPC subnet IDs), backfill-mode CLI, curated-layer CTAS automation, handling more
+than one table.
 
 ## Phase 3 — Governance and erasure
 
