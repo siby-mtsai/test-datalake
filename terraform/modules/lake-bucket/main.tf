@@ -45,9 +45,50 @@ resource "aws_s3_bucket_public_access_block" "lake" {
   restrict_public_buckets = true
 }
 
+# Access logs must go to a SEPARATE bucket, not the lake bucket itself: S3 server access logging
+# does not support delivering logs to an SSE-KMS-encrypted destination (only SSE-S3), and the lake
+# bucket's default encryption is SSE-KMS. Self-targeting silently delivers nothing - found by
+# checking whether any log objects had actually landed after hours of real traffic; they hadn't.
+resource "aws_s3_bucket" "lake_logs" {
+  bucket = "mtsai-datalake-${var.environment}-${var.account_id}-${var.region}-logs"
+  tags   = var.tags
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "lake_logs" {
+  bucket = aws_s3_bucket.lake_logs.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256" # SSE-S3, not KMS - required for log delivery to work at all.
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "lake_logs" {
+  bucket                  = aws_s3_bucket.lake_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "lake_logs" {
+  bucket = aws_s3_bucket.lake_logs.id
+
+  rule {
+    id     = "expire-old-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 90
+    }
+  }
+}
+
 resource "aws_s3_bucket_logging" "lake" {
   bucket        = aws_s3_bucket.lake.id
-  target_bucket = aws_s3_bucket.lake.id
+  target_bucket = aws_s3_bucket.lake_logs.id
   target_prefix = "access-logs/"
 }
 
