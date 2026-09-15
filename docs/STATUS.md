@@ -92,16 +92,19 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
 - **Real data round-trip tested (2026-09-14)**: `INSERT INTO test_table VALUES ...` (raw) →
   `SELECT` back → `INSERT INTO test_table_curated SELECT ... FROM test_raw.test_table` (transform)
   → `SELECT` back. Confirms the storage/query layer works with real data, not just empty tables.
-- **Fifth bug found (2026-09-15), fixed, not yet applied**: `aws_s3_bucket_logging` had the lake
-  bucket logging to itself, but S3 server access logging doesn't support an SSE-KMS-encrypted
-  destination (only SSE-S3) — the lake bucket's default encryption is SSE-KMS, so this was
-  silently a no-op (`terraform apply` succeeded, but no `access-logs/` objects were ever actually
-  delivered, confirmed after hours of real traffic). Fixed in
-  `terraform/modules/lake-bucket/main.tf` by adding a separate SSE-S3 logs bucket
-  (`mtsai-datalake-<env>-<account>-<region>-logs`) as the logging target. **Not yet applied** —
-  found while the local AWS SSO session had unexpectedly switched to the Dev account
-  (`517293881120`); needs either that session switched back to Test or applying via `deploy.yaml`
-  (uses the dedicated `test-datalake` OIDC role regardless of local session state).
+- **Fifth bug found (2026-09-15), fixed and applied**: `aws_s3_bucket_logging` had the lake bucket
+  logging to itself, but S3 server access logging doesn't support an SSE-KMS-encrypted destination
+  (only SSE-S3) — the lake bucket's default encryption is SSE-KMS, so this was silently a no-op
+  (`terraform apply` succeeded, but no `access-logs/` objects were ever actually delivered,
+  confirmed after hours of real traffic). Fixed in `terraform/modules/lake-bucket/main.tf` by
+  adding a separate SSE-S3 logs bucket (`mtsai-datalake-test-690293068614-ap-south-1-logs`) as the
+  logging target. Applied via `deploy.yaml`; configuration re-verified directly:
+  `get-bucket-logging` on the lake bucket now points at the new logs bucket, and
+  `get-bucket-encryption` on the logs bucket confirms `AES256` (not KMS). **Actual log delivery
+  itself not yet confirmed** — AWS's own documentation says server access logs can take up to a
+  few hours to start landing after a config change, so this needs a follow-up check
+  (`aws s3 ls s3://mtsai-datalake-test-690293068614-ap-south-1-logs/access-logs/`) later rather
+  than an immediate one.
 
 ### Still-untested pieces (not known bugs, just never exercised by a live run)
 
