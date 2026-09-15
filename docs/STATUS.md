@@ -100,11 +100,23 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
   adding a separate SSE-S3 logs bucket (`mtsai-datalake-test-690293068614-ap-south-1-logs`) as the
   logging target. Applied via `deploy.yaml`; configuration re-verified directly:
   `get-bucket-logging` on the lake bucket now points at the new logs bucket, and
-  `get-bucket-encryption` on the logs bucket confirms `AES256` (not KMS). **Actual log delivery
-  itself not yet confirmed** — AWS's own documentation says server access logs can take up to a
-  few hours to start landing after a config change, so this needs a follow-up check
-  (`aws s3 ls s3://mtsai-datalake-test-690293068614-ap-south-1-logs/access-logs/`) later rather
-  than an immediate one.
+  `get-bucket-encryption` on the logs bucket confirms `AES256` (not KMS).
+- **Sixth bug found (2026-09-15), fixed and applied**: after the fifth-bug fix, `access-logs/` was
+  *still* empty. Root cause: the logs bucket has Object Ownership `BucketOwnerEnforced` (ACLs
+  disabled — the S3 default for buckets created since April 2023), so the classic ACL-based grant
+  to the S3 Log Delivery group can't apply at all, and no bucket policy existed to grant that
+  permission another way. Without either mechanism this isn't a delay, it's a hard, permanent
+  block — confirmed via `get-bucket-ownership-controls` (`BucketOwnerEnforced`) and
+  `get-bucket-policy` (`NoSuchBucketPolicy`, i.e. none existed). Fixed by adding an explicit bucket
+  policy granting `logging.s3.amazonaws.com` `s3:PutObject` under `access-logs/*`, scoped with
+  `aws:SourceArn`/`aws:SourceAccount` conditions to only the lake bucket. Applied and confirmed via
+  `get-bucket-policy`.
+- **Actual log delivery still not confirmed** (this part genuinely is just normal delay now, not a
+  known bug) — AWS's docs say server access logs can take up to a few hours to start landing even
+  with everything configured correctly. Follow-up check:
+  `aws s3 ls s3://mtsai-datalake-test-690293068614-ap-south-1-logs/access-logs/ --region ap-south-1`
+  — marker requests were made at `2026-09-15T11:47:17Z` and `2026-09-15T11:49:55Z` to look for once
+  logs appear.
 
 ### Still-untested pieces (not known bugs, just never exercised by a live run)
 
