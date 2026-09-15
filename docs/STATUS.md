@@ -111,12 +111,12 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
   policy granting `logging.s3.amazonaws.com` `s3:PutObject` under `access-logs/*`, scoped with
   `aws:SourceArn`/`aws:SourceAccount` conditions to only the lake bucket. Applied and confirmed via
   `get-bucket-policy`.
-- **Actual log delivery still not confirmed** (this part genuinely is just normal delay now, not a
-  known bug) — AWS's docs say server access logs can take up to a few hours to start landing even
-  with everything configured correctly. Follow-up check:
-  `aws s3 ls s3://mtsai-datalake-test-690293068614-ap-south-1-logs/access-logs/ --region ap-south-1`
-  — marker requests were made at `2026-09-15T11:47:17Z` and `2026-09-15T11:49:55Z` to look for once
-  logs appear.
+- **Log delivery confirmed working end-to-end (2026-09-15)**: log objects appeared in
+  `access-logs/` covering the marker traffic from `2026-09-15T11:47:17Z`/`11:49:55Z`. Observed
+  delivery latency was ~5.5 hours (request at 12:15 UTC, object visible ~17:45 UTC) — longer than
+  the commonly-cited "a few hours," but still consistent with AWS's "best effort, no SLA"
+  description of this feature. S3 access logging on the lake bucket is genuinely functional now,
+  closing out both the fifth and sixth bugs above.
 
 ### Still-untested pieces (not known bugs, just never exercised by a live run)
 
