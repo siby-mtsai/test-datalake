@@ -71,6 +71,40 @@ resource "aws_s3_bucket_public_access_block" "lake_logs" {
   restrict_public_buckets = true
 }
 
+# Since April 2023, new S3 buckets default to Object Ownership "Bucket owner enforced" (ACLs
+# disabled) - that's the case here, confirmed via `aws s3api get-bucket-ownership-controls`. With
+# ACLs disabled, the classic "grant the S3 Log Delivery group access via ACL" mechanism can't
+# apply at all, so server access logging silently never delivers anything unless the target
+# bucket has an explicit policy granting the logging service principal permission instead. Found
+# by checking for both a policy and any actual log objects after real traffic - there was
+# neither.
+data "aws_iam_policy_document" "lake_logs_delivery" {
+  statement {
+    sid     = "S3ServerAccessLogsPolicy"
+    actions = ["s3:PutObject"]
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    resources = ["${aws_s3_bucket.lake_logs.arn}/access-logs/*"]
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [aws_s3_bucket.lake.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [var.account_id]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "lake_logs_delivery" {
+  bucket = aws_s3_bucket.lake_logs.id
+  policy = data.aws_iam_policy_document.lake_logs_delivery.json
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "lake_logs" {
   bucket = aws_s3_bucket.lake_logs.id
 
