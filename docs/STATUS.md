@@ -89,6 +89,29 @@ implemented per Section 4/6/7. `terraform fmt`/`validate` are clean in all three
   *should* retain raw access), the same raw query → `SUCCEEDED`, confirming the fixes didn't
   over-restrict legitimate access. Isolation between consumer roles is genuinely working now, not
   just believed to be from reading the Terraform.
+- **Real data round-trip tested (2026-09-14)**: `INSERT INTO test_table VALUES ...` (raw) →
+  `SELECT` back → `INSERT INTO test_table_curated SELECT ... FROM test_raw.test_table` (transform)
+  → `SELECT` back. Confirms the storage/query layer works with real data, not just empty tables.
+- **Fifth bug found (2026-09-15), fixed, not yet applied**: `aws_s3_bucket_logging` had the lake
+  bucket logging to itself, but S3 server access logging doesn't support an SSE-KMS-encrypted
+  destination (only SSE-S3) — the lake bucket's default encryption is SSE-KMS, so this was
+  silently a no-op (`terraform apply` succeeded, but no `access-logs/` objects were ever actually
+  delivered, confirmed after hours of real traffic). Fixed in
+  `terraform/modules/lake-bucket/main.tf` by adding a separate SSE-S3 logs bucket
+  (`mtsai-datalake-<env>-<account>-<region>-logs`) as the logging target. **Not yet applied** —
+  found while the local AWS SSO session had unexpectedly switched to the Dev account
+  (`517293881120`); needs either that session switched back to Test or applying via `deploy.yaml`
+  (uses the dedicated `test-datalake` OIDC role regardless of local session state).
+
+### Still-untested pieces (not known bugs, just never exercised by a live run)
+
+- KMS key has no custom key policy — Section 6 says it should restrict usage to "the export role,
+  Athena workgroup roles, and account break-glass role only," but currently relies on IAM alone
+  (AWS default key policy).
+- Export-task's own IAM role/Glue-write permissions have never been exercised by an actual
+  container run (no export job exists yet - Phase 2).
+- The CloudWatch alarm / SNS notification path for ECS task failures has never been triggered.
+- `aws_budgets_budget` resources aren't created yet (`alarm_email` is empty).
 
 ### CI: GitHub Actions (mirrors `mtsai-commuter-infra`'s pattern)
 
