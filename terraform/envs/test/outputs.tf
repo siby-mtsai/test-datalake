@@ -17,3 +17,11 @@ output "consumer_role_arns" {
 output "export_cluster_arn" {
   value = module.export_task.cluster_arn
 }
+
+output "mtsai_api_sim_endpoint" {
+  value = module.mtsai_api_sim.endpoint
+}
+
+output "mtsai_api_sim_secret_arn" {
+  value = module.mtsai_api_sim.secret_arn
+}

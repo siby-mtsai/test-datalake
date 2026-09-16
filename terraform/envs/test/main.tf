@@ -35,6 +35,16 @@ module "athena_workgroup" {
   tags                       = local.common_tags
 }
 
+module "mtsai_api_sim" {
+  source = "../../modules/mtsai-api-sim"
+
+  environment = var.environment
+  vpc_id      = var.mtsai_api_sim_vpc_id
+  subnet_ids  = var.mtsai_api_sim_subnet_ids
+  client_cidr = var.mtsai_api_sim_client_cidr
+  tags        = local.common_tags
+}
+
 module "export_task" {
   source = "../../modules/export-task"
 
