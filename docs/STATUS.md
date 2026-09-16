@@ -4,33 +4,57 @@ Progress log per the brief's working rhythm (Section 13): updated at the end of 
 
 ## Phase 0 — Discovery (target: 3 working days)
 
-**Status:** Not started — blocked on access.
+**Status:** Run for real against a synthetic stand-in database (2026-09-16) — genuinely blocked
+only on the real `mtsai-api` database itself, which still doesn't exist anywhere in this project.
 
-### Blockers
+### The real blocker, and how it got worked around
 
-- ~~AWS access to Dev account~~ **Resolved.** The `SSL: CERTIFICATE_VERIFY_FAILED` errors from
-  AWS CLI, the Terraform provider plugin, and intermittently `git push` were all the same root
-  cause: **Avast Antivirus's "Web/Mail Shield" HTTPS scanning** on this machine was
-  man-in-the-middling all TLS connections and re-signing them with its own CA
-  (`issuer=... CN=Avast Web/Mail Shield Root`). Terraform (Go) trusted it via the Windows system
-  cert store; AWS CLI (Python/botocore) does not, hence the failures. Disabling Avast's HTTPS
-  scanning fixed AWS CLI, `terraform validate`, and git access immediately — no CA bundle
-  workaround needed. If this resurfaces on another machine, check for the same interception
-  pattern before assuming an AWS permissions problem.
-- **Postgres (`mtsai-api`) read access**: no connection string, `.pgpass`, or DB driver available
-  in this environment. Need either a read-replica connection string or a dedicated low-privilege
-  role (per Section 4, "Source" row), plus a Postgres client to run the discovery queries with.
-- **Read replica question** (Section 7, Phase 0, step 4): need to confirm with the mtsai-api team
-  whether a read replica exists and its lag, to decide the nightly export window.
+There has never been a real `mtsai-api` Postgres database reachable from this project — not
+production, and (confirmed 2026-09-16) not even a copy of it in the Test AWS account. Rather than
+stay blocked indefinitely, provisioned `mtsai-api-sim`
+(`terraform/modules/mtsai-api-sim`) — a disposable RDS Postgres instance in Test, seeded with a
+schema and synthetic data covering every Section 5 classification class
+(`tools/seed-api-db`) — and ran Phase 0's actual discovery queries (`tools/pg-query`, since no
+`psql` client exists in this environment either) against it for the first time.
 
-### What's ready once access lands
+**This is explicitly a stand-in, not the real thing.** Every deliverable below is genuinely useful
+for proving the classification scheme and discovery process work end-to-end, but table names,
+row counts, and query patterns all need re-confirming against the real `mtsai-api` schema once
+access to it exists — each doc says so explicitly, not just here.
 
-- [`phase0-inventory-template.md`](phase0-inventory-template.md) — run against
-  `pg_stat_user_tables` / `pg_total_relation_size`.
-- [`phase0-top-queries-template.md`](phase0-top-queries-template.md) — run against
-  `pg_stat_statements`.
-- [`classification-table.md`](classification-table.md) — Section 5 table, ready to fill in and
-  circulate for sign-off (Section 12, checkpoint 1).
+- ~~AWS access to Dev account~~ **Resolved earlier.** The `SSL: CERTIFICATE_VERIFY_FAILED` errors
+  from AWS CLI, the Terraform provider plugin, and intermittently `git push` were all the same
+  root cause: **Avast Antivirus's "Web/Mail Shield" HTTPS scanning** on this machine was
+  man-in-the-middling all TLS connections and re-signing them with its own CA. Disabling Avast's
+  HTTPS scanning fixed it — no CA bundle workaround needed.
+- **Read replica question (Section 7, Phase 0, step 4) — still genuinely open.** This asks whether
+  a read replica exists for the *real* `mtsai-api` database, to decide the nightly export window.
+  A synthetic single-instance stand-in can't answer this — it still needs the actual mtsai-api
+  team.
+
+### Deliverables — filled in for real, against the synthetic stand-in
+
+- [`phase0-inventory-template.md`](phase0-inventory-template.md) — real `pg_stat_user_tables` /
+  `pg_total_relation_size` / primary-key output for all 6 seeded tables.
+- [`phase0-top-queries-template.md`](phase0-top-queries-template.md) — real `pg_stat_statements`
+  output from a representative seeded workload; the analytical-vs-transactional split matches the
+  brief's own Section 2 problem statement (analytical queries dominate total execution time
+  despite far fewer calls).
+- [`classification-table.md`](classification-table.md) — Section 5 classes mapped onto real table
+  names for the first time. Retention periods are still bracketed placeholders (a business/legal
+  decision, not something discovery alone determines) — not yet circulated for sign-off.
+
+### mtsai-api-sim details (not secret — the instance itself, not its credentials)
+
+- Instance: `mtsai-api-sim-test`, `db.t3.micro`, single-AZ, `ap-south-1`, Test account
+  (`690293068614`).
+- Publicly accessible but locked via security group to one client IP (no bastion/VPN exists in
+  this VPC's default-public-subnets-only setup) — a known, accepted simplification, not a
+  production pattern.
+- Credentials: `aws-secretsmanager:mtsai-api-sim-test-credentials`, shaped to match exactly what
+  `export/internal/config/config.go` already parses — this secret's ARN could be wired into
+  `export-task`'s `postgres_secret_arn` later if Phase 2 should read from this instead of local
+  Docker (not done automatically; a deliberate follow-up decision).
 
 ## Phase 1 — Foundation
 

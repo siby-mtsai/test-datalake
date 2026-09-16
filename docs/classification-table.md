@@ -5,13 +5,19 @@ and whoever owns the Budapest (GDPR) / Toronto (PIPEDA) compliance question **be
 starts for real**. Bracketed values are placeholders to confirm against the live system and
 Phase 0 inventory.
 
-| Class | Examples | Postgres retention | Lake retention | Personal data? |
-|---|---|---|---|---|
-| Hot operational | Active accounts, wallets, current zone configuration, rules | Indefinite | Nightly snapshot to raw for reporting only | Yes |
-| Warm events | Trip events, ANPR camera events, reward and penalty ledger entries | [90] days | Per jurisdiction policy, default [7] years for ledger, [12] months for raw camera events | Yes (vehicle and account identifiers) |
-| Cold reference feeds | MapmyIndia, TomTom, Google Routes responses, weather | [30] days | [3] years | No |
-| Derived aggregates | Hourly zone occupancy, congestion indices | Rolling [1] year | Indefinite | No |
-| Test and synthetic | CITY_ZZ / Cityville fixtures | As needed | Excluded from the lake entirely | No |
+> **Table names below are from `mtsai-api-sim`** (synthetic stand-in, `docs/STATUS.md`), mapped
+> onto the brief's five classes to prove the classification scheme actually covers a real (if
+> synthetic) schema end-to-end. Retention periods are still bracketed placeholders — those are
+> business/legal decisions, not something Phase 0 discovery can determine from a schema alone,
+> synthetic or real. Table names need re-confirming against the real `mtsai-api` schema.
+
+| Class | Examples | Tables (`mtsai-api-sim`) | Postgres retention | Lake retention | Personal data? |
+|---|---|---|---|---|---|
+| Hot operational | Active accounts, wallets, current zone configuration, rules | `accounts` | Indefinite | Nightly snapshot to raw for reporting only | Yes |
+| Warm events | Trip events, ANPR camera events, reward and penalty ledger entries | `trip_events`, `anpr_camera_events`, `reward_ledger` | [90] days | Per jurisdiction policy, default [7] years for ledger, [12] months for raw camera events | Yes (vehicle and account identifiers) |
+| Cold reference feeds | MapmyIndia, TomTom, Google Routes responses, weather | `reference_feed_cache` | [30] days | [3] years | No |
+| Derived aggregates | Hourly zone occupancy, congestion indices | `zone_occupancy_hourly` | Rolling [1] year | Indefinite | No |
+| Test and synthetic | CITY_ZZ / Cityville fixtures | Rows with `city_code = 'CITY_ZZ'` inside the tables above (~5% of rows) | As needed | Excluded from the lake entirely | No |
 
 ## Rules that must hold
 
@@ -30,4 +36,6 @@ Phase 0 inventory.
 - [ ] Budapest (GDPR) compliance owner
 - [ ] Toronto (PIPEDA) compliance owner
 
-Status: **draft — pending Phase 0 inventory to confirm placeholders, not yet circulated.**
+Status: **draft — table-to-class mapping demonstrated against a synthetic stand-in schema
+(`mtsai-api-sim`); retention placeholders and table names both still need confirming against the
+real `mtsai-api` schema once access exists. Not yet circulated for sign-off.**
