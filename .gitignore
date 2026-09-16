@@ -13,6 +13,9 @@ override.tf.json
 
 # Go
 /export/bin/
+/export/export.exe
+/tools/*/mtsai-datalake-*
+*.exe
 
 # OS
 .DS_Store
