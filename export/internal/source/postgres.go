@@ -14,8 +14,13 @@ import (
 	"mtsai-datalake-export/internal/model"
 )
 
+// "prefer" negotiates SSL when the server supports it and falls back to plaintext when it
+// doesn't - required so this same code works unmodified against both a real RDS instance (which
+// rejects plaintext connections outright: "no pg_hba.conf entry ... no encryption") and the local
+// Docker Postgres used for integration testing (which isn't configured for SSL at all). Found by
+// actually pointing this at mtsai-api-sim after only ever testing against local Docker.
 func Connect(ctx context.Context, creds config.PostgresCredentials) (*pgx.Conn, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=prefer",
 		creds.Username, creds.Password, creds.Host, creds.Port, creds.DBName)
 	conn, err := pgx.Connect(ctx, connStr)
 	if err != nil {

@@ -232,6 +232,29 @@ wiring it into the ECS task definition, the real EventBridge schedule actually t
 (still blocked on VPC subnet IDs), backfill-mode CLI, curated-layer CTAS automation, handling more
 than one table.
 
+### Connected to a real (if synthetic) AWS database for the first time (2026-09-17)
+
+Previously only ever run against local Docker Postgres. Pointed it at `mtsai-api-sim` (the Test
+Phase 0 stand-in database) instead — `trip_events` there already matched the export job's expected
+schema exactly, and the Secrets Manager secret was already shaped to match what
+`internal/config/config.go` parses, both deliberately set up that way earlier.
+
+**Fourth real bug found**: connection failed with `no pg_hba.conf entry ... no encryption` — the
+export job hardcoded `sslmode=disable` (fine for local Docker, which isn't configured for SSL at
+all) but RDS rejects plaintext connections outright. Fixed by switching to `sslmode=prefer`
+(negotiates SSL when available, falls back when not), so the same code now works unmodified
+against both.
+
+**Verified end-to-end against real AWS infrastructure on both ends** (not local Docker + Test AWS
+like before — now RDS + Test AWS): exported `trip_events` for `2026-07-07` (76 rows), independently
+confirmed row count and checksum matched on both the Postgres source and the Iceberg destination
+via Athena (76 rows, checksum 177962 on both sides).
+
+Still not wired up automatically — `postgres_secret_arn` in `terraform/envs/test/variables.tf` is
+still empty; this run passed `mtsai-api-sim`'s credentials by hand. Wiring that variable to
+`module.mtsai_api_sim.secret_arn` would make it the default source instead of a manual override —
+a natural next step, not done automatically here.
+
 ## Phase 3 — Governance and erasure
 
 **Status:** Not started.
