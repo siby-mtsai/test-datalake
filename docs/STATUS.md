@@ -189,7 +189,7 @@ but is not being applied, and isn't blocking anything. Revisit this section if t
 
 ## Phase 2 — Export pipeline
 
-**Status:** v1 slice built and verified end-to-end (2026-09-15) — one table only, not deployed.
+**Status:** Running automatically in Test (2026-09-21) — one table only (`trip_events`).
 
 Go export job (`export/`, module `mtsai-datalake-export`) that reads Postgres via a server-side
 cursor, writes Parquet, uploads to S3, commits into an Iceberg table via Athena, reconciles row
@@ -289,6 +289,43 @@ pushed to the new ECR repo yet, a separate remaining step once the IAM blocker c
 
 Not the same class of thing as the SSL/logging/DDL bugs above — this one isn't a code bug, it's
 missing permissions genuinely outside this session's authority to grant itself.
+
+### Automated export now live and verified end-to-end (2026-09-21)
+
+The `iam:CreateRole` blocker above was cleared by whoever owns the aws-org handoff, not worked
+around: the session's AWS identity was switched to a role with that permission, and the scheduler
+role/schedule were created for real. `terraform plan` confirmed zero drift afterward.
+
+Built and pushed the real ARM64 export image (`690293068614.dkr.ecr.ap-south-1.amazonaws.com/mtsai-datalake-test-export:latest`,
+18.3MB, distroless base) to replace the `hello-world` placeholder, and applied that to Test —
+`export_container_image` now defaults to the real image, not the placeholder.
+
+**Manually invoked the deployed task once** (`aws ecs run-task`, same task definition/network
+config/IAM role the nightly schedule uses, with `EXPORT_DATE=2026-07-07` overridden so it wouldn't
+need to wait on the actual clock) to prove the automated path works without waiting up to 24h for
+the real `cron(0 20 * * ? *)` to fire.
+
+**Seventh bug found (2026-09-21), fixed and applied**: first run failed at the very last step —
+`commit to iceberg: ... InvalidRequestException: Unable to verify/create output bucket` — even
+though the read/parquet/upload steps succeeded (76 rows). Root cause: the export task's own IAM
+role was missing `s3:GetBucketLocation` on the results bucket, the exact same gotcha already
+found and fixed for the Athena consumer roles back in Phase 1 (see above) but never carried over
+to `export-task`'s own policy. Fixed in `terraform/modules/export-task/main.tf` by adding the same
+`ResultsBucketLocation`-style statement, applied (0 add, 1 change, 0 destroy).
+
+**Re-ran the same manual invocation after the fix — succeeded end-to-end**: container exit code 0,
+log line `run ... succeeded: 76 row(s), checksum=177962, duration=11.01s` — matching the
+already-verified value exactly. Independently re-confirmed from the outside (not just trusting the
+container's own log): `SELECT COUNT(*) FROM test_raw.trip_events WHERE event_date = DATE
+'2026-07-07'` via Athena → `76`, and `export-manifests/2026-07-07/trip_events.json` present in S3.
+
+This closes out the last "still-untested piece" from Phase 1 (the export-task role had never
+actually been assumed/used, only inspected) and the last item blocking Phase 2's brief-defined
+"done when": the job now runs unattended, in AWS, on its own schedule, under its own IAM role —
+verified by the same path the schedule itself uses, not a stand-in. The one thing not yet directly
+observed is an actual unattended nightly firing (the schedule fires at 20:00 UTC); this manual
+invocation used the identical task definition, network config, and IAM role, so there's no
+remaining reason to expect that to behave differently.
 
 ## Phase 3 — Governance and erasure
 

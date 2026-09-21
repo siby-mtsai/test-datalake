@@ -129,6 +129,16 @@ data "aws_iam_policy_document" "task_access" {
   # No dedicated Athena workgroup exists for this role (see CommitToIcebergQuery below), so every
   # query must pass its own ResultConfiguration.OutputLocation explicitly - which needs its own
   # write access, separate from raw/ and export-manifests/.
+  # Athena calls s3:GetBucketLocation on the results bucket to verify it before running any
+  # query at all - a bucket-level action with no "prefix" concept, so it can't be scoped by
+  # s3:prefix like the ListBucket statements below. Missing this produces "Unable to
+  # verify/create output bucket" (same gotcha already documented in athena-workgroup/main.tf).
+  statement {
+    sid       = "AthenaResultsBucketLocation"
+    actions   = ["s3:GetBucketLocation"]
+    resources = [var.bucket_arn]
+  }
+
   statement {
     sid       = "AthenaResultsReadWrite"
     actions   = ["s3:GetObject", "s3:PutObject"]

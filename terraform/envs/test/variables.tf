@@ -23,9 +23,9 @@ variable "owner" {
 }
 
 variable "export_container_image" {
-  description = "Export job container image. Defaults to the module's hello-world placeholder until the real image is built and pushed to the ECR repo this env creates (module.export_task.ecr_repository_url)."
+  description = "Export job container image - the real image built from export/Dockerfile and pushed to this env's ECR repo (module.export_task.ecr_repository_url)."
   type        = string
-  default     = "public.ecr.aws/docker/library/hello-world:latest"
+  default     = "690293068614.dkr.ecr.ap-south-1.amazonaws.com/mtsai-datalake-test-export:latest"
 }
 
 variable "alarm_email" {

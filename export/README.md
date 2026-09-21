@@ -58,10 +58,18 @@ fast at startup if any are missing:
 by the `Dockerfile`. `EXPORT_DATE` (optional, `YYYY-MM-DD`) overrides the default of "yesterday,
 UTC" — used for manual/backfill runs.
 
+## Running automatically in Test
+
+As of 2026-09-21, the real image is built and pushed to `export-task`'s ECR repo, and an
+EventBridge Scheduler fires the ECS task nightly (`cron(0 20 * * ? *)` UTC) against
+`mtsai-api-sim`, with `POSTGRES_CREDENTIALS` wired automatically from
+`module.mtsai_api_sim.secret_arn` — no manual credential passing needed anymore. Verified by
+manually invoking the deployed task definition once (`aws ecs run-task`, same network
+config/IAM role the schedule uses, `EXPORT_DATE` overridden to a known-good date instead of
+waiting on the clock) — see `docs/STATUS.md` for the full verification trail.
+
 ## Explicitly out of scope for this slice
 
-- Pushing the image to ECR / updating `export-task`'s `container_image` variable to a real image.
-- The real nightly EventBridge schedule actually triggering it (still blocked on VPC subnet IDs).
 - Backfill-mode / multi-date-range CLI.
 - Curated-layer CTAS automation (brief Phase 2 step 6).
 - Handling more than one table.
