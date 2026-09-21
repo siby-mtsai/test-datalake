@@ -120,6 +120,24 @@ data "aws_iam_policy_document" "task_access" {
     }
   }
 
+  # Curated-zone mirror of WriteRawAndManifests/ListRawAndManifests above, for cmd/curate.
+  statement {
+    sid       = "WriteCurated"
+    actions   = ["s3:PutObject", "s3:GetObject"]
+    resources = ["${var.bucket_arn}/curated/*"]
+  }
+
+  statement {
+    sid       = "ListCurated"
+    actions   = ["s3:ListBucket"]
+    resources = [var.bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["curated", "curated/*"]
+    }
+  }
+
   statement {
     sid       = "EncryptWrites"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
@@ -205,6 +223,29 @@ data "aws_iam_policy_document" "task_access" {
       "arn:aws:glue:*:${var.account_id}:table/${var.raw_database_name}/*",
     ]
   }
+
+  # Curated-zone mirror of CommitToIceberg above, for cmd/curate's INSERT INTO trip_events_curated.
+  # Some of these actions (e.g. glue:DeleteTable, used elsewhere only to drop cmd/export's
+  # throwaway staging tables) aren't strictly needed by curate's simpler no-staging-table flow -
+  # kept anyway for consistency with the already-proven raw grant, rather than re-discovering the
+  # same permission gaps from scratch a second time.
+  statement {
+    sid = "CommitToCurated"
+    actions = [
+      "glue:GetDatabase",
+      "glue:GetTable",
+      "glue:GetTables",
+      "glue:GetPartitions",
+      "glue:CreateTable",
+      "glue:UpdateTable",
+      "glue:DeleteTable",
+      "glue:BatchCreatePartition",
+    ]
+    resources = [
+      "arn:aws:glue:*:${var.account_id}:database/${var.curated_database_name}",
+      "arn:aws:glue:*:${var.account_id}:table/${var.curated_database_name}/*",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "task_access" {
@@ -249,6 +290,52 @@ resource "aws_ecs_task_definition" "export" {
         { name = "MTSAI_DATALAKE_ENV", value = var.environment },
         { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
         { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
+        { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+      ]
+    }
+  ])
+
+  tags = var.tags
+}
+
+# --- Curate task definition (same image, same roles, different entrypoint) ---
+# entryPoint (not command) fully replaces the image's default ENTRYPOINT ["/export"] - the image
+# itself is unchanged for the export task definition above, which doesn't set this and so keeps
+# running /export as before.
+
+resource "aws_ecs_task_definition" "curate" {
+  family                   = "mtsai-datalake-${var.environment}-curate"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.cpu
+  memory                   = var.memory
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name       = "curate"
+      image      = var.container_image
+      entryPoint = ["/curate"]
+      essential  = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.export.name
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "curate"
+        }
+      }
+      environment = [
+        { name = "MTSAI_DATALAKE_ENV", value = var.environment },
+        { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
+        { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
+        { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
       ]
     }
   ])
@@ -323,8 +410,11 @@ data "aws_iam_policy_document" "scheduler_run_task" {
   count = local.export_schedule_enabled ? 1 : 0
 
   statement {
-    actions   = ["ecs:RunTask"]
-    resources = [replace(aws_ecs_task_definition.export.arn, "/:\\d+$/", ":*")]
+    actions = ["ecs:RunTask"]
+    resources = [
+      replace(aws_ecs_task_definition.export.arn, "/:\\d+$/", ":*"),
+      replace(aws_ecs_task_definition.curate.arn, "/:\\d+$/", ":*"),
+    ]
     condition {
       test     = "ArnLike"
       variable = "ecs:cluster"
@@ -370,6 +460,34 @@ resource "aws_scheduler_schedule" "nightly_export" {
         # true because these are public subnets with no NAT gateway (same constraint documented
         # for mtsai-api-sim) - without a public IP the task has no route to the internet at all
         # and every AWS API call would just hang.
+        assign_public_ip = true
+      }
+    }
+  }
+}
+
+resource "aws_scheduler_schedule" "nightly_curate" {
+  count      = local.export_schedule_enabled ? 1 : 0
+  name       = "mtsai-datalake-${var.environment}-nightly-curate"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = var.curate_schedule_expression
+
+  target {
+    arn      = aws_ecs_cluster.export.arn
+    role_arn = aws_iam_role.scheduler[0].arn
+
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.curate.arn
+      launch_type         = "FARGATE"
+
+      network_configuration {
+        subnets          = var.subnet_ids
+        security_groups  = [aws_security_group.export_task[0].id]
         assign_public_ip = true
       }
     }

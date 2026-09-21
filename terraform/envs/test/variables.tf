@@ -53,5 +53,5 @@ variable "mtsai_api_sim_subnet_ids" {
 variable "mtsai_api_sim_client_cidr" {
   description = "Single CIDR allowed to reach the mtsai-api-sim database - no bastion/VPN exists in this VPC, so this is the access control instead of network isolation. Update if the client's public IP changes."
   type        = string
-  default     = "103.189.214.130/32"
+  default     = "106.51.72.117/32"
 }

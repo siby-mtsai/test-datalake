@@ -53,6 +53,7 @@ type Config struct {
 	RawDatabase string
 	Region      string
 	RunDate     time.Time
+	RunDates    []time.Time // set instead of RunDate when EXPORT_START_DATE/EXPORT_END_DATE are used (backfill mode)
 	Postgres    PostgresCredentials
 	Tables      []Table
 }
@@ -99,10 +100,33 @@ func Load(getenv func(string) string, readFile func(string) ([]byte, error)) (*C
 	}
 	cfg.Tables = tf.Tables
 
-	runDate := getenv("EXPORT_DATE") // override for manual/backfill runs; defaults to yesterday UTC
-	if runDate == "" {
+	runDate := getenv("EXPORT_DATE") // override for manual runs; defaults to yesterday UTC
+	startDate := getenv("EXPORT_START_DATE")
+	endDate := getenv("EXPORT_END_DATE")
+
+	switch {
+	case (startDate == "") != (endDate == ""):
+		return nil, fmt.Errorf("EXPORT_START_DATE and EXPORT_END_DATE must both be set together")
+	case runDate != "" && startDate != "":
+		return nil, fmt.Errorf("EXPORT_DATE cannot be combined with EXPORT_START_DATE/EXPORT_END_DATE")
+	case startDate != "":
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return nil, fmt.Errorf("EXPORT_START_DATE must be YYYY-MM-DD, got %q: %w", startDate, err)
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return nil, fmt.Errorf("EXPORT_END_DATE must be YYYY-MM-DD, got %q: %w", endDate, err)
+		}
+		if end.Before(start) {
+			return nil, fmt.Errorf("EXPORT_END_DATE (%s) is before EXPORT_START_DATE (%s)", endDate, startDate)
+		}
+		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+			cfg.RunDates = append(cfg.RunDates, d)
+		}
+	case runDate == "":
 		cfg.RunDate = time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour)
-	} else {
+	default:
 		d, err := time.Parse("2006-01-02", runDate)
 		if err != nil {
 			return nil, fmt.Errorf("EXPORT_DATE must be YYYY-MM-DD, got %q: %w", runDate, err)

@@ -189,7 +189,8 @@ but is not being applied, and isn't blocking anything. Revisit this section if t
 
 ## Phase 2 — Export pipeline
 
-**Status:** Running automatically in Test (2026-09-21) — one table only (`trip_events`).
+**Status:** All six of the brief's Phase 2 build steps are done in Test (2026-09-21) — one table
+only (`trip_events`). Nightly export and curated-layer runs are both live and scheduled.
 
 Go export job (`export/`, module `mtsai-datalake-export`) that reads Postgres via a server-side
 cursor, writes Parquet, uploads to S3, commits into an Iceberg table via Athena, reconciles row
@@ -227,10 +228,9 @@ job's actual calls, applied to Test.
 correct; re-ran for the same date and confirmed the row count stayed at 5, not 10 (idempotency);
 `docker build --platform linux/arm64` succeeds for the container image (not pushed anywhere yet).
 
-**Explicitly out of scope for this slice** (see `export/README.md`): pushing the image to ECR /
-wiring it into the ECS task definition, the real EventBridge schedule actually triggering it
-(still blocked on VPC subnet IDs), backfill-mode CLI, curated-layer CTAS automation, handling more
-than one table.
+**Explicitly out of scope for this slice** (see `export/README.md`): handling more than one table.
+(Everything else originally listed here — pushing the image, the real schedule, backfill mode,
+curated-layer automation — has since been built; see below.)
 
 ### Connected to a real (if synthetic) AWS database for the first time (2026-09-17)
 
@@ -339,6 +339,55 @@ relative to whatever day it happens to run. The pipeline still exercised its ful
 read → S3 upload → Athena commit) successfully on an empty day, which is exactly what a real
 low-traffic night should look like. This was genuinely the last unverified piece of Phase 2's
 "done when" — the schedule is not just configured correctly, it demonstrably works unattended.
+
+### Backfill mode and the curated layer built (2026-09-21) — Phase 2 build steps 5-6
+
+The last two of the brief's six Phase 2 build steps, previously unbuilt.
+
+**Backfill mode** (`cmd/export`): `EXPORT_START_DATE`/`EXPORT_END_DATE` env vars, alongside the
+existing single-date `EXPORT_DATE`, drive the job over a date range - one date at a time,
+continuing through any single date's failure so the rest of the range's throughput can still be
+measured, but still failing the overall run (and its alarm) if anything failed. Each date still
+gets its own per-date manifest as before, plus a new aggregate summary manifest at
+`export-manifests/backfill/<start>_<end>/summary.json` (row counts/checksums/durations per date,
+plus totals - "record throughput" per the brief). No new Terraform needed: it runs on the exact
+same deployed task definition via an `aws ecs run-task` env override (`runbooks/backfill.md` has
+the exact command).
+
+**Curated layer** (`cmd/curate`, new binary in the same image/module): a second EventBridge
+schedule (07:20 UTC, 20 minutes after the nightly export) runs a second, small ECS task that
+copies one day's rows from `test_raw.trip_events` into `test_curated.trip_events_curated` via a
+straight Athena `INSERT INTO ... SELECT ... FROM` - no staging table needed, unlike `cmd/export`,
+since both sides are already-registered Iceberg tables. Same idempotency pattern as the raw
+commit (`DELETE` the partition, then `INSERT`). The curated table itself was created once by hand
+via Iceberg CTAS, this time with the SQL actually committed to
+`sql/curated/trip_events_curated.sql` instead of being lost the way the earlier
+`test_table_curated` example was. v1 curated is honestly a schema-stable passthrough copy of raw,
+not real cleaning/dedup logic yet.
+
+**Verified locally first, then against the real deployed containers, not just code review:**
+- Local backfill run for `2026-07-06`..`2026-07-08` (a date range spanning three separate
+  seeded days, not just the one previously-known date): 58 / 76 / 55 rows, `189` total, `0` failed.
+  Re-ran the same range - identical counts and checksums (idempotent, not doubled).
+- Local curate run for `2026-07-07`: `76` rows copied from raw to curated, checksum `177962`,
+  matching raw exactly. Re-ran - still `76`, not `152` (idempotent).
+- Rebuilt and pushed the container image (now containing both `/export` and `/curate`), applied
+  Terraform (new `curate` ECS task definition + its schedule, curated-zone IAM statements added to
+  the shared task role, `MTSAI_DATALAKE_CURATED_DATABASE` env var) - `terraform plan` clean
+  afterward.
+- Manually invoked the **deployed** curate task for `2026-07-08` (a date not touched by the local
+  test, to prove the real container independently): exit code 0, `55` rows, checksum `141034`,
+  independently reconfirmed via Athena and the manifest in S3.
+- Manually invoked the **deployed** export task in backfill mode for the same three-day range:
+  exit code 0, identical figures to the local run (58 / 76 / 55, `189` total, `0` failed).
+
+This closes the last two items from the brief's Phase 2 build steps. What's left of Phase 2's own
+"done when" (adapted to Test per the standing Dev→Test scoping decision) is purely about
+elapsed time and volume, not anything left to build: seven consecutive nights with zero
+reconciliation failures (one real night observed so far), and the twenty baseline queries from
+Phase 0 rewritten against curated tables with recorded execution times/bytes scanned (Phase 0
+itself is still blocked on real `mtsai-api` access, so those twenty queries don't exist yet
+either).
 
 ## Phase 3 — Governance and erasure
 

@@ -30,6 +30,14 @@ output "export_ecr_repository_url" {
   value = module.export_task.ecr_repository_url
 }
 
+output "curate_task_definition_arn" {
+  value = module.export_task.curate_task_definition_arn
+}
+
+output "export_task_security_group_id" {
+  value = module.export_task.export_task_security_group_id
+}
+
 output "export_schedule_enabled" {
   value = module.export_task.export_schedule_enabled
 }

@@ -28,6 +28,11 @@ variable "raw_database_name" {
   type        = string
 }
 
+variable "curated_database_name" {
+  description = "Glue database name for the curated zone the curate task writes into."
+  type        = string
+}
+
 variable "postgres_secret_arn" {
   description = "Secrets Manager ARN for the dedicated low-privilege Postgres read role (brief Section 6). Empty until Phase 0 confirms the read replica / role - the IAM policy grants no access when empty."
   type        = string
@@ -44,6 +49,12 @@ variable "schedule_expression" {
   description = "EventBridge Scheduler cron/rate expression for the nightly export run."
   type        = string
   default     = "cron(0 7 * * ? *)" # 07:00 UTC == 12:30 IST
+}
+
+variable "curate_schedule_expression" {
+  description = "EventBridge Scheduler cron/rate expression for the nightly curate run - offset after schedule_expression to give the export run ample time to finish (a normal run takes well under a minute)."
+  type        = string
+  default     = "cron(20 7 * * ? *)" # 20 minutes after the default export schedule
 }
 
 variable "cpu" {

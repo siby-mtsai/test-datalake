@@ -56,20 +56,26 @@ fast at startup if any are missing:
 
 `CONFIG_PATH` defaults to `/etc/mtsai-datalake-export/tables.yaml`, baked into the container image
 by the `Dockerfile`. `EXPORT_DATE` (optional, `YYYY-MM-DD`) overrides the default of "yesterday,
-UTC" — used for manual/backfill runs.
+UTC" — used for manual single-date runs. `EXPORT_START_DATE`/`EXPORT_END_DATE` (both together,
+instead of `EXPORT_DATE`) run a backfill over that inclusive date range instead — see
+`runbooks/backfill.md`.
+
+`cmd/curate` (a separate binary, same image) reads `MTSAI_DATALAKE_CURATED_DATABASE` in addition
+to the env vars above (not `POSTGRES_CREDENTIALS` — it never touches Postgres) and
+`CURATE_DATE` (optional, mirrors `EXPORT_DATE`).
 
 ## Running automatically in Test
 
-As of 2026-09-21, the real image is built and pushed to `export-task`'s ECR repo, and an
-EventBridge Scheduler fires the ECS task nightly (`cron(0 20 * * ? *)` UTC) against
-`mtsai-api-sim`, with `POSTGRES_CREDENTIALS` wired automatically from
-`module.mtsai_api_sim.secret_arn` — no manual credential passing needed anymore. Verified by
-manually invoking the deployed task definition once (`aws ecs run-task`, same network
-config/IAM role the schedule uses, `EXPORT_DATE` overridden to a known-good date instead of
-waiting on the clock) — see `docs/STATUS.md` for the full verification trail.
+As of 2026-09-21, the real image is built and pushed to `export-task`'s ECR repo, and two
+EventBridge schedules fire nightly: export at `cron(0 7 * * ? *)` UTC (12:30 PM IST) against
+`mtsai-api-sim`, and curate 20 minutes later at `cron(20 7 * * ? *)` UTC, copying that night's
+export from `test_raw.trip_events` into `test_curated.trip_events_curated`.
+`POSTGRES_CREDENTIALS` is wired automatically from `module.mtsai_api_sim.secret_arn` — no manual
+credential passing needed. Both schedules were verified by manually invoking their deployed task
+definitions (`aws ecs run-task`, same network config/IAM role the schedules use) — see
+`docs/STATUS.md` for the full verification trail, including one directly-observed real unattended
+nightly firing.
 
 ## Explicitly out of scope for this slice
 
-- Backfill-mode / multi-date-range CLI.
-- Curated-layer CTAS automation (brief Phase 2 step 6).
 - Handling more than one table.
