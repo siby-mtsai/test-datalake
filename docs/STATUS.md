@@ -413,6 +413,26 @@ summary manifest at `export-manifests/backfill/2026-05-20_2026-06-18/summary.jso
 remaining ~241 newly-seeded dates are seeded but not yet exported - backfilling them is
 mechanically identical, just a longer-running invocation of the same command.
 
+### Manually ran 7 dates to add reliability evidence (2026-09-21) — not a substitute for the brief's own bar
+
+Asked whether "seven consecutive nights" could just be run in one step. The honest answer is no -
+that criterion is specifically about the *unattended schedule* proving itself reliable over real
+elapsed time, which a manual invocation, however many dates it covers, doesn't demonstrate. What a
+manual multi-date run *does* demonstrate is that the pipeline logic itself holds up across
+repeated runs with zero reconciliation failures - genuinely useful evidence, just not the same
+claim.
+
+With that distinction explicit, ran the deployed export task once in backfill mode over a fresh,
+previously-untouched 7-day range (`2026-08-10` to `2026-08-16`): **7 succeeded, 0 failed, 401
+total rows, 68s wall clock**. Independently re-confirmed via Athena (`SELECT COUNT(*) FROM
+trip_events WHERE event_date BETWEEN DATE '2026-08-10' AND DATE '2026-08-16'` → `401`, matching
+the run's own totals exactly).
+
+This does **not** close out the brief's "seven consecutive nights" item above - that still needs
+the real schedule (currently at one observed night) to keep firing on its own, one calendar day at
+a time, and gets checked off by elapsed time, not by running more dates through the pipeline by
+hand.
+
 ## Phase 3 — Governance and erasure
 
 **Status:** Not started.
