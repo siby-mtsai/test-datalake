@@ -61,6 +61,7 @@ module "export_task" {
   subnet_ids            = var.mtsai_api_sim_subnet_ids
   db_security_group_id  = module.mtsai_api_sim.security_group_id
   alarm_email           = var.alarm_email
+  alarm_phone_number    = var.alarm_phone_number
   tags                  = local.common_tags
 }
 

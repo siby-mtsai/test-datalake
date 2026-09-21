@@ -672,6 +672,16 @@ resource "aws_sns_topic_subscription" "export_alarms_email" {
   endpoint  = var.alarm_email
 }
 
+# SMS needs no confirmation step at all (unlike email, which never arrived across three different
+# addresses/domains - couldn't diagnose why from here, no visibility into SNS's mail delivery
+# pipeline) - active the moment this applies.
+resource "aws_sns_topic_subscription" "export_alarms_sms" {
+  count     = var.alarm_phone_number != "" ? 1 : 0
+  topic_arn = aws_sns_topic.export_alarms.arn
+  protocol  = "sms"
+  endpoint  = var.alarm_phone_number
+}
+
 resource "aws_cloudwatch_event_rule" "task_stopped" {
   name = "mtsai-datalake-${var.environment}-export-task-stopped"
 

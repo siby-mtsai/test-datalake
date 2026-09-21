@@ -31,7 +31,13 @@ variable "export_container_image" {
 variable "alarm_email" {
   description = "Email subscribed to export job failure alerts and budget notifications."
   type        = string
-  default     = "romy@miracletraffic.ai"
+  default     = "romysiby@gmail.com"
+}
+
+variable "alarm_phone_number" {
+  description = "Phone number (E.164 format) subscribed to export job failure alerts via SMS - added because SNS's email confirmation never arrived across three different addresses/domains, and SMS needs no confirmation step at all."
+  type        = string
+  default     = "+918891387645"
 }
 
 variable "mtsai_api_sim_vpc_id" {

@@ -99,6 +99,12 @@ variable "alarm_email" {
   default     = ""
 }
 
+variable "alarm_phone_number" {
+  description = "Phone number (E.164 format, e.g. +918891387645) subscribed to the export job failure SNS topic via SMS. Empty skips the subscription."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags applied to every resource in this module."
   type        = map(string)
