@@ -25,3 +25,11 @@ output "mtsai_api_sim_endpoint" {
 output "mtsai_api_sim_secret_arn" {
   value = module.mtsai_api_sim.secret_arn
 }
+
+output "export_ecr_repository_url" {
+  value = module.export_task.ecr_repository_url
+}
+
+output "export_schedule_enabled" {
+  value = module.export_task.export_schedule_enabled
+}

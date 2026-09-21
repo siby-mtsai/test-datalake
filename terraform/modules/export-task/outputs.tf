@@ -15,6 +15,10 @@ output "alarm_topic_arn" {
 }
 
 output "export_schedule_enabled" {
-  description = "Whether the nightly EventBridge schedule was created - false until subnet_ids and security_group_ids are both populated."
+  description = "Whether the nightly EventBridge schedule was created - false until vpc_id and subnet_ids are both populated."
   value       = local.export_schedule_enabled
+}
+
+output "ecr_repository_url" {
+  value = aws_ecr_repository.export.repository_url
 }

@@ -58,16 +58,22 @@ variable "memory" {
   default     = "1024"
 }
 
+variable "vpc_id" {
+  description = "VPC the Fargate task runs in - the module creates its own security group here (egress-only; no inbound needed). Empty skips the schedule entirely, same as subnet_ids."
+  type        = string
+  default     = ""
+}
+
 variable "subnet_ids" {
-  description = "Private subnet IDs the Fargate task runs in. Must be populated before first apply - left empty as a placeholder pending VPC/network confirmation."
+  description = "Subnet IDs the Fargate task runs in. Must be populated before first apply - left empty as a placeholder pending VPC/network confirmation."
   type        = list(string)
   default     = []
 }
 
-variable "security_group_ids" {
-  description = "Security group IDs for the Fargate task's network interface. Must allow egress to RDS and AWS service endpoints."
-  type        = list(string)
-  default     = []
+variable "db_security_group_id" {
+  description = "Security group of the database the export task needs to reach (e.g. mtsai-api-sim's). When set, the module adds an ingress rule there allowing Postgres from the export task's own security group. Empty skips that wiring."
+  type        = string
+  default     = ""
 }
 
 variable "alarm_email" {

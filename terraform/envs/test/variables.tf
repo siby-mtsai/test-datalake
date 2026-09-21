@@ -22,22 +22,10 @@ variable "owner" {
   default     = "Fizza"
 }
 
-variable "postgres_secret_arn" {
-  description = "Secrets Manager ARN for the dedicated low-privilege Postgres read role. Empty until Phase 0 confirms the read replica / role."
+variable "export_container_image" {
+  description = "Export job container image. Defaults to the module's hello-world placeholder until the real image is built and pushed to the ECR repo this env creates (module.export_task.ecr_repository_url)."
   type        = string
-  default     = ""
-}
-
-variable "export_subnet_ids" {
-  description = "Private subnet IDs for the export Fargate task. Must be populated before first apply."
-  type        = list(string)
-  default     = []
-}
-
-variable "export_security_group_ids" {
-  description = "Security group IDs for the export Fargate task."
-  type        = list(string)
-  default     = []
+  default     = "public.ecr.aws/docker/library/hello-world:latest"
 }
 
 variable "alarm_email" {

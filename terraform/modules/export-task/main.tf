@@ -1,10 +1,32 @@
 # Scheduled ECS Fargate export job + its IAM, schedule, and failure alerting
 # (brief Section 4 "Export" row, Section 6, Section 7 Phase 1 step 2 / Phase 2).
-#
-# The Go export binary itself (mtsai-datalake-export) doesn't exist yet - that's Phase 2. This
-# module stands up the AWS-side scaffolding now (cluster, task definition, schedule, IAM, alarms)
-# with a placeholder container image, per Phase 1's "IAM roles for export... EventBridge schedule,
-# CloudWatch alarms and an SNS topic" scope.
+
+resource "aws_ecr_repository" "export" {
+  name                 = "mtsai-datalake-${var.environment}-export"
+  image_tag_mutability = "MUTABLE" # Test env, not a versioned release process yet
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ecr_lifecycle_policy" "export" {
+  repository = aws_ecr_repository.export.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep only the last 5 images - Test env, no versioned release process yet"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 5
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
 
 resource "aws_ecs_cluster" "export" {
   name = "mtsai-datalake-${var.environment}"
@@ -227,13 +249,45 @@ resource "aws_ecs_task_definition" "export" {
 data "aws_region" "current" {}
 
 # --- Nightly schedule (EventBridge Scheduler -> ecs:RunTask) ---
-# Fargate tasks need a VPC network config (subnets + security groups) to run at all, and neither
-# is confirmed yet (brief Section 7 Phase 0 - VPC/network not yet decided). Rather than block the
-# rest of Phase 1 (bucket, Glue, Athena workgroups) on that, the schedule itself - and the IAM role
-# that only exists to run it - are only created once both are actually supplied.
+# Fargate tasks need a VPC network config (subnets + a security group) to run at all. The schedule
+# itself - and the IAM role that only exists to run it - are only created once vpc_id/subnet_ids
+# are actually supplied, same as before this module owned its own security group.
 
 locals {
-  export_schedule_enabled = length(var.subnet_ids) > 0 && length(var.security_group_ids) > 0
+  export_schedule_enabled = var.vpc_id != "" && length(var.subnet_ids) > 0
+}
+
+# No inbound needed - this task only makes outbound calls (to the database and to AWS service
+# endpoints). Egress is open because it needs to reach S3/Glue/Athena/Secrets Manager over the
+# internet via this VPC's internet gateway (no NAT gateway exists), plus the database.
+resource "aws_security_group" "export_task" {
+  count       = local.export_schedule_enabled ? 1 : 0
+  name        = "mtsai-datalake-${var.environment}-export-task"
+  description = "Egress-only security group for the scheduled export Fargate task"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = var.tags
+}
+
+# Additive: lets the export task reach the database over the network, without touching whatever
+# other access (e.g. a developer's IP for manual queries) that security group already allows. Uses
+# the modern per-rule resource (not aws_security_group_rule) to match mtsai-api-sim's security
+# group, which is deliberately built without inline ingress/egress blocks for exactly this reason.
+resource "aws_vpc_security_group_ingress_rule" "db_ingress_from_export_task" {
+  count                        = local.export_schedule_enabled && var.db_security_group_id != "" ? 1 : 0
+  security_group_id            = var.db_security_group_id
+  referenced_security_group_id = aws_security_group.export_task[0].id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Postgres from the scheduled export Fargate task"
 }
 
 data "aws_iam_policy_document" "scheduler_trust" {
@@ -301,9 +355,12 @@ resource "aws_scheduler_schedule" "nightly_export" {
       launch_type         = "FARGATE"
 
       network_configuration {
-        subnets          = var.subnet_ids
-        security_groups  = var.security_group_ids
-        assign_public_ip = false
+        subnets         = var.subnet_ids
+        security_groups = [aws_security_group.export_task[0].id]
+        # true because these are public subnets with no NAT gateway (same constraint documented
+        # for mtsai-api-sim) - without a public IP the task has no route to the internet at all
+        # and every AWS API call would just hang.
+        assign_public_ip = true
       }
     }
   }

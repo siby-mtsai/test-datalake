@@ -4,27 +4,34 @@
 # (if synthetic) to eventually point at. Not a claim that it matches the real mtsai-api schema -
 # see docs/STATUS.md and docs/classification-table.md for that caveat.
 
+# No inline ingress/egress blocks here deliberately: this security group needs rules added from
+# outside this module too (the scheduled export task's security group gets an ingress rule added
+# by terraform/modules/export-task). Mixing inline blocks with separate rule resources on the same
+# security group is a well-documented Terraform footgun (the inline-block resource treats itself
+# as authoritative and fights any externally-added rule) - using standalone rule resources for
+# every rule, from the start, avoids that entirely.
 resource "aws_security_group" "db" {
   name        = "mtsai-api-sim-${var.environment}"
   description = "Postgres access for the mtsai-api-sim instance - locked to one client CIDR, no bastion exists in this VPC"
   vpc_id      = var.vpc_id
+  tags        = var.tags
+}
 
-  ingress {
-    description = "Postgres from the confirmed client IP only"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.client_cidr]
-  }
+resource "aws_vpc_security_group_ingress_rule" "client_cidr" {
+  security_group_id = aws_security_group.db.id
+  description       = "Postgres from the confirmed client IP only"
+  from_port         = 5432
+  to_port           = 5432
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.client_cidr
+  tags              = var.tags
+}
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = var.tags
+resource "aws_vpc_security_group_egress_rule" "all" {
+  security_group_id = aws_security_group.db.id
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+  tags              = var.tags
 }
 
 resource "aws_db_subnet_group" "this" {
