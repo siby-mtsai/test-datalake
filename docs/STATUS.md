@@ -322,10 +322,23 @@ container's own log): `SELECT COUNT(*) FROM test_raw.trip_events WHERE event_dat
 This closes out the last "still-untested piece" from Phase 1 (the export-task role had never
 actually been assumed/used, only inspected) and the last item blocking Phase 2's brief-defined
 "done when": the job now runs unattended, in AWS, on its own schedule, under its own IAM role —
-verified by the same path the schedule itself uses, not a stand-in. The one thing not yet directly
-observed is an actual unattended nightly firing (the schedule fires at 20:00 UTC); this manual
-invocation used the identical task definition, network config, and IAM role, so there's no
-remaining reason to expect that to behave differently.
+verified by the same path the schedule itself uses, not a stand-in.
+
+**Schedule moved to 07:00 UTC / 12:30 PM IST** (from the original 20:00 UTC / 01:30 AM IST),
+per explicit request — easier to observe during working hours. Applied via
+`terraform/modules/export-task/variables.tf`.
+
+**An actual unattended nightly firing was then directly observed (2026-09-21, 07:00 UTC)** — not
+just the manual same-path invocation above. `aws ecs list-tasks` showed a third stopped task with
+`startedBy: chronos-schedule/mtsai-datalake-test` (EventBridge Scheduler's own signature, distinct
+from the manually-invoked ones), which the AWS Console's Tasks tab surfaced within seconds of it
+firing. Ran clean end-to-end: exit code 0, `succeeded: 0 row(s), checksum=0, duration=9.93s`. Zero
+rows is expected, not a bug — with no `EXPORT_DATE` override it defaulted to "yesterday"
+(2026-09-20), and the seeded fixture data only exists on fixed dates (e.g. 2026-07-07), not
+relative to whatever day it happens to run. The pipeline still exercised its full path (Postgres
+read → S3 upload → Athena commit) successfully on an empty day, which is exactly what a real
+low-traffic night should look like. This was genuinely the last unverified piece of Phase 2's
+"done when" — the schedule is not just configured correctly, it demonstrably works unattended.
 
 ## Phase 3 — Governance and erasure
 
