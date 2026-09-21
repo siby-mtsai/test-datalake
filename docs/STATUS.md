@@ -389,6 +389,30 @@ Phase 0 rewritten against curated tables with recorded execution times/bytes sca
 itself is still blocked on real `mtsai-api` access, so those twenty queries don't exist yet
 either).
 
+### Extended mtsai-api-sim's history and ran a real multi-week backfill (2026-09-21)
+
+Every backfill run up to this point covered only a handful of dates the original seed happened to
+produce. To exercise the mechanism at something closer to "full history" scale, extended
+`tools/seed-api-db` with an additive-only mode (`SEED_EXTEND_HISTORY=1`) that inserts
+`trip_events` rows across a disjoint, older date range (91-365 days back from today) without
+truncating anything - the existing tool's default path truncates and reseeds everything relative
+to whenever it's run, which would have silently reshuffled and invalidated every already-verified
+date/checksum recorded above and in `runbooks/backfill.md`. Ran it once; added **271 new distinct
+dates** (`2025-09-21` to `2026-06-18`) to `mtsai-api-sim`. (The insert landed twice back-to-back -
+30,000 rows instead of the intended 15,000, per two distinct `created_at` timestamps a second
+apart, cause not identified - harmless since it's purely additive synthetic filler and doesn't
+touch anything previously seeded, confirmed by re-checking `2026-07-07`'s count/checksum
+unchanged at `76`/`177962` afterward.)
+
+Backfilled a 30-day slice of that new range (`2026-05-20` to `2026-06-18`) into the lake via the
+deployed export task, rather than the full 271 days (would take the better part of an hour
+sequentially at this scale): **30 succeeded, 0 failed, 3,198 total rows, 260s wall clock**.
+Independently re-confirmed the total via Athena (`SELECT COUNT(*) FROM trip_events WHERE
+event_date BETWEEN DATE '2026-05-20' AND DATE '2026-06-18'` → `3198`, matching the backfill
+summary manifest at `export-manifests/backfill/2026-05-20_2026-06-18/summary.json` exactly). The
+remaining ~241 newly-seeded dates are seeded but not yet exported - backfilling them is
+mechanically identical, just a longer-running invocation of the same command.
+
 ## Phase 3 — Governance and erasure
 
 **Status:** Not started.

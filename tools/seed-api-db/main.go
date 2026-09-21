@@ -43,6 +43,14 @@ func run() error {
 	}
 	defer conn.Close(ctx)
 
+	// Additive-only opt-in: adds trip_events further back in history without touching (or
+	// truncating) anything the default path below seeds - see extendTripEventsHistory's own
+	// comment for why this has to be a separate path rather than just widening daysBack below.
+	if os.Getenv("SEED_EXTEND_HISTORY") != "" {
+		log.Println("extending trip_events history (additive, no truncate)...")
+		return extendTripEventsHistory(ctx, conn, rng)
+	}
+
 	log.Println("connected, creating schema...")
 	if err := createSchema(ctx, conn); err != nil {
 		return fmt.Errorf("creating schema: %w", err)
@@ -176,6 +184,39 @@ func cityForRow(rng *rand.Rand) string {
 func randomPastDate(rng *rand.Rand, daysBack int) time.Time {
 	d := rng.Intn(daysBack)
 	return time.Now().UTC().AddDate(0, 0, -d).Truncate(24 * time.Hour)
+}
+
+func randomPastDateInRange(rng *rand.Rand, minDaysBack, maxDaysBack int) time.Time {
+	d := minDaysBack + rng.Intn(maxDaysBack-minDaysBack+1)
+	return time.Now().UTC().AddDate(0, 0, -d).Truncate(24 * time.Hour)
+}
+
+// extendTripEventsHistory adds trip_events rows across a wider historical window (91-365 days
+// back from today) than seedTripEvents' 0-90 day window, so a backfill has more than a handful of
+// days to actually run over. Deliberately additive only, never TRUNCATE: re-running the default
+// path above regenerates the recent 0-90 day window relative to whenever it's run, which would
+// silently reshuffle which calendar dates have data and invalidate every already-verified
+// date/checksum recorded in docs/STATUS.md and runbooks/backfill.md. This targets a disjoint date
+// range instead, so nothing already seeded or documented changes.
+func extendTripEventsHistory(ctx context.Context, conn *pgx.Conn, rng *rand.Rand) error {
+	const n = 15000 // ~55/day across a 275-day window, matching the recent window's observed density
+	rows := make([][]any, n)
+	for i := 0; i < n; i++ {
+		rows[i] = []any{
+			fmt.Sprintf("hash_veh_%06d", rng.Intn(1500)),
+			cityForRow(rng),
+			randomPastDateInRange(rng, 91, 365),
+			roundTo(rng.Float64()*25+0.5, 1),
+			roundTo(rng.Float64()*600+30, 2),
+		}
+	}
+	if _, err := conn.CopyFrom(ctx, pgx.Identifier{"trip_events"},
+		[]string{"vehicle_id_hash", "city_code", "event_date", "distance_km", "fare_amount"},
+		pgx.CopyFromRows(rows)); err != nil {
+		return err
+	}
+	log.Printf("inserted %d additional trip_events row(s) across days 91-365 back from today", n)
+	return nil
 }
 
 func seedAccounts(ctx context.Context, conn *pgx.Conn, rng *rand.Rand, n int) ([]int64, error) {
