@@ -255,6 +255,41 @@ still empty; this run passed `mtsai-api-sim`'s credentials by hand. Wiring that 
 `module.mtsai_api_sim.secret_arn` would make it the default source instead of a manual override —
 a natural next step, not done automatically here.
 
+### Attempted to make it run automatically (2026-09-21) — partially applied, blocked on IAM
+
+Wired up everything the dormant `export_schedule_enabled` scheduling code (written back in Phase 1,
+never activated) needed to finally turn on: an ECR repository for the image, a security group for
+the Fargate task (module-owned, matching `mtsai-api-sim`'s pattern — converted that module's
+security group from inline ingress/egress blocks to standalone rule resources first, since mixing
+inline blocks with rules added from another module is a well-documented Terraform footgun),
+`postgres_secret_arn` finally wired to `module.mtsai_api_sim.secret_arn` automatically,
+`assign_public_ip = true` (required — public subnets, no NAT gateway).
+
+**Applied and confirmed live**: the ECR repo, the export task's security group + its DB ingress
+rule, and a new ECS task definition revision with the Postgres secret actually injected.
+
+**Blocked, not worked around**: creating the EventBridge Scheduler itself requires an IAM role for
+it to assume, which requires `iam:CreateRole` — and the current session's `DeveloperPowerUser`
+access does **not** have that permission:
+```
+AccessDenied: ... not authorized to perform: iam:CreateRole on resource:
+arn:aws:iam::690293068614:role/mtsai-datalake-test-export-scheduler
+```
+This is exactly the scenario the brief's own Section 7, Phase 1 step 3 anticipated: *"if you hit
+AccessDenied on iam:CreateRole, stop and check the aws-org notes before widening anything."*
+Per that explicit instruction, this was not worked around (no self-granted permissions, no
+alternate account). **Needs a real IAM permissions fix from whoever owns the aws-org handoff** —
+either broaden `DeveloperPowerUser`'s policy to allow creating this specific role, or create
+`mtsai-datalake-test-export-scheduler` by hand and re-run `terraform apply` (which would then just
+adopt/manage it going forward... actually would need an `terraform import` first since Terraform
+doesn't know about a hand-created role - flag this back if that's the route taken).
+
+The container image itself is also still the `hello-world` placeholder — hasn't been built and
+pushed to the new ECR repo yet, a separate remaining step once the IAM blocker clears.
+
+Not the same class of thing as the SSL/logging/DDL bugs above — this one isn't a code bug, it's
+missing permissions genuinely outside this session's authority to grant itself.
+
 ## Phase 3 — Governance and erasure
 
 **Status:** Not started.
