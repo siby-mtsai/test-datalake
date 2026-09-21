@@ -31,7 +31,7 @@ variable "export_container_image" {
 variable "alarm_email" {
   description = "Email subscribed to export job failure alerts and budget notifications."
   type        = string
-  default     = "romysiby@miracletraffic.ai"
+  default     = "romy@miracletraffic.ai"
 }
 
 variable "mtsai_api_sim_vpc_id" {
