@@ -467,9 +467,22 @@ Logs Insights query parsing the `duration=X.XXs` every job already logs). Set
 `alarm_email = "siby@miracletraffic.ai"` in `terraform/envs/test/variables.tf`, which activated
 three already-coded-but-dormant per-consumer `aws_budgets_budget` resources ($50/$50/$25 monthly
 for analytics/forecasting/audit) and the export/curate failure-alert SNS subscription — both had
-existed since earlier phases, just gated on this being non-empty. **The SNS subscription is
-`PendingConfirmation`** — needs the confirmation email at that address clicked before alerts
-actually deliver.
+existed since earlier phases, just gated on this being non-empty.
+
+**Confirming the SNS subscription took real troubleshooting.** The confirmation email didn't
+arrive across four separate attempts (`siby@`/`romy@`/`romysiby@` on `miracletraffic.ai`, plus a
+personal Gmail address), which ruled out single-mailbox or single-domain filtering. SNS turned out
+to give **zero delivery visibility for the `email` protocol** — delivery-status logging only
+covers SQS/Lambda/HTTP/Firehose/mobile push, so there was no log to inspect, only AWS's own
+`PendingConfirmation` status. Tried SMS as an alternative (needs no confirmation step at all) — it
+also failed silently, this time for a diagnosable reason: the account's default $1/month SNS SMS
+spend cap, confirmed via `aws sns get-sms-attributes`. Root cause of the email failures turned out
+to be simpler than any of that: the confirmation email had been arriving the whole time, landing
+in spam every time. Found once the user actually checked the spam folder; confirmed legitimate
+(sender `no-reply@sns.amazonaws.com`, topic ARN matched exactly), marked not-spam, and confirmed.
+**`siby@miracletraffic.ai`'s subscription is now genuinely `Confirmed`**, verified by publishing a
+real test message to the topic and receiving it. Three other addresses tried along the way remain
+`PendingConfirmation` (harmless, will expire on their own; not actively cleaned up).
 
 ### Manifest format documented
 
