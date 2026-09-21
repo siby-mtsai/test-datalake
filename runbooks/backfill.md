@@ -19,11 +19,14 @@ aws ecs run-task \
   --cluster arn:aws:ecs:ap-south-1:690293068614:cluster/mtsai-datalake-test \
   --task-definition mtsai-datalake-test-export \
   --launch-type FARGATE \
-  --network-configuration '{"awsvpcConfiguration":{"subnets":["subnet-0266f942977861ddd","subnet-08064e40f903eceab","subnet-05639de4c9e0732b7"],"securityGroups":["<export task security group id - terraform output export_task_security_group_id, or read from the task definition's current revision>"],"assignPublicIp":"ENABLED"}}' \
+  --network-configuration '{"awsvpcConfiguration":{"subnets":["subnet-0266f942977861ddd","subnet-08064e40f903eceab","subnet-05639de4c9e0732b7"],"securityGroups":["sg-03adcaeb0b6470eb3"],"assignPublicIp":"ENABLED"}}' \
   --overrides '{"containerOverrides":[{"name":"export","environment":[{"name":"EXPORT_START_DATE","value":"2026-01-01"},{"name":"EXPORT_END_DATE","value":"2026-01-31"}]}]}'
 ```
 
 Omit the `:<revision>` suffix on `--task-definition` to always use the latest deployed revision.
+The security group ID above is Test's current one; re-fetch it with
+`terraform output export_task_security_group_id` (in `terraform/envs/test/`) if it's ever
+recreated.
 
 ## Checking results
 
