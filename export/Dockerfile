@@ -6,11 +6,16 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /export ./cmd/export
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /curate ./cmd/curate
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /compact ./cmd/compact
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /erasure ./cmd/erasure
 
 FROM --platform=linux/arm64 gcr.io/distroless/static-debian12
 COPY --from=build /export /export
 COPY --from=build /curate /curate
+COPY --from=build /compact /compact
+COPY --from=build /erasure /erasure
 COPY internal/config/tables.yaml /etc/mtsai-datalake-export/tables.yaml
-# /curate is selected by the curate ECS task definition's own entryPoint override - the image's
-# default (this ENTRYPOINT) stays /export so the existing nightly export task is unaffected.
+# /curate, /compact, and /erasure are each selected by their own ECS task definition's entryPoint
+# override - the image's default (this ENTRYPOINT) stays /export so the existing nightly export
+# task is unaffected.
 ENTRYPOINT ["/export"]

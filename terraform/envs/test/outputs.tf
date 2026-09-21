@@ -34,6 +34,18 @@ output "curate_task_definition_arn" {
   value = module.export_task.curate_task_definition_arn
 }
 
+output "compact_task_definition_arn" {
+  value = module.export_task.compact_task_definition_arn
+}
+
+output "erasure_task_definition_arn" {
+  value = module.export_task.erasure_task_definition_arn
+}
+
+output "cost_dashboard_url" {
+  value = module.cost_dashboard.dashboard_url
+}
+
 output "export_task_security_group_id" {
   value = module.export_task.export_task_security_group_id
 }

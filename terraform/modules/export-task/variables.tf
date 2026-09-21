@@ -57,6 +57,12 @@ variable "curate_schedule_expression" {
   default     = "cron(20 7 * * ? *)" # 20 minutes after the default export schedule
 }
 
+variable "compact_schedule_expression" {
+  description = "EventBridge Scheduler cron/rate expression for the weekly Iceberg VACUUM run (brief Phase 3 step 2)."
+  type        = string
+  default     = "cron(0 3 ? * SUN *)" # 03:00 UTC every Sunday - low-traffic window, off the nightly export/curate path
+}
+
 variable "cpu" {
   description = "Fargate task CPU units."
   type        = string

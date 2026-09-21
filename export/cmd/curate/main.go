@@ -43,6 +43,7 @@ type config struct {
 	RawDatabase     string
 	CuratedDatabase string
 	Region          string
+	WorkGroup       string
 	RunDate         time.Time
 }
 
@@ -52,6 +53,7 @@ func loadConfig() (*config, error) {
 		RawDatabase:     os.Getenv("MTSAI_DATALAKE_RAW_DATABASE"),
 		CuratedDatabase: os.Getenv("MTSAI_DATALAKE_CURATED_DATABASE"),
 		Region:          os.Getenv("AWS_REGION"),
+		WorkGroup:       os.Getenv("MTSAI_DATALAKE_WORKGROUP"),
 	}
 	if cfg.Bucket == "" || cfg.RawDatabase == "" || cfg.CuratedDatabase == "" {
 		return nil, fmt.Errorf("MTSAI_DATALAKE_BUCKET, MTSAI_DATALAKE_RAW_DATABASE, and MTSAI_DATALAKE_CURATED_DATABASE are all required")
@@ -98,6 +100,7 @@ func run() error {
 		Client:         athenaClient,
 		Database:       cfg.CuratedDatabase,
 		OutputLocation: fmt.Sprintf("s3://%s/athena-results/export/", cfg.Bucket),
+		WorkGroup:      cfg.WorkGroup,
 	}
 
 	m := manifest.Manifest{

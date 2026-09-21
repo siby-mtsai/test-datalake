@@ -63,3 +63,13 @@ module "export_task" {
   alarm_email           = var.alarm_email
   tags                  = local.common_tags
 }
+
+module "cost_dashboard" {
+  source = "../../modules/cost-dashboard"
+
+  environment              = var.environment
+  region                   = var.region
+  consumer_workgroup_names = module.athena_workgroup.workgroup_names
+  pipeline_workgroup_name  = module.export_task.pipeline_workgroup_name
+  export_log_group_name    = module.export_task.log_group_name
+}

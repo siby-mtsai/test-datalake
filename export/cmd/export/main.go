@@ -120,6 +120,7 @@ func runOnce(ctx context.Context, cfg *config.Config, s3Client *s3.Client, athen
 		Client:         athenaClient,
 		Database:       cfg.RawDatabase,
 		OutputLocation: fmt.Sprintf("s3://%s/athena-results/export/", cfg.Bucket),
+		WorkGroup:      cfg.WorkGroup,
 	}
 
 	commitErr := lake.CommitToIceberg(ctx, runner, lake.CommitInput{

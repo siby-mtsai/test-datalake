@@ -39,6 +39,25 @@ resource "aws_cloudwatch_log_group" "export" {
   tags              = var.tags
 }
 
+# Dedicated workgroup for the pipeline's own Athena calls (export/curate/compact/erasure) - not a
+# consumer-facing workgroup like analytics/forecasting/audit. Every AthenaRunner call now sets
+# this explicitly, found necessary the hard way: leaving the workgroup unset (falling back to
+# "primary") let a query run against a stale cached Iceberg snapshot - reproducibly undercounting
+# a live table - while an explicit workgroup consistently saw correct, current data. No bytes-
+# scanned cutoff (internal pipeline, not a cost-limited external consumer) and
+# EnforceWorkGroupConfiguration=false so each AthenaRunner call's own OutputLocation still applies
+# rather than being overridden by a workgroup-level one.
+resource "aws_athena_workgroup" "pipeline" {
+  name = "mtsai-datalake-${var.environment}-pipeline"
+
+  configuration {
+    enforce_workgroup_configuration    = false
+    publish_cloudwatch_metrics_enabled = true
+  }
+
+  tags = var.tags
+}
+
 # --- Task execution role: pulls the image, writes logs, reads the DB secret into the container ---
 
 data "aws_iam_policy_document" "execution_trust" {
@@ -138,15 +157,25 @@ data "aws_iam_policy_document" "task_access" {
     }
   }
 
+  # VACUUM (cmd/compact, Phase 3) actually deletes old data/metadata files once a snapshot expires
+  # - the statements above only ever granted PutObject/GetObject, never DeleteObject, because
+  # nothing needed it until now.
+  statement {
+    sid       = "VacuumAndErasureDelete"
+    actions   = ["s3:DeleteObject"]
+    resources = ["${var.bucket_arn}/raw/*", "${var.bucket_arn}/curated/*"]
+  }
+
   statement {
     sid       = "EncryptWrites"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.kms_key_arn]
   }
 
-  # No dedicated Athena workgroup exists for this role (see CommitToIcebergQuery below), so every
-  # query must pass its own ResultConfiguration.OutputLocation explicitly - which needs its own
-  # write access, separate from raw/ and export-manifests/.
+  # Every AthenaRunner call still passes its own ResultConfiguration.OutputLocation explicitly
+  # (see aws_athena_workgroup.pipeline's comment - EnforceWorkGroupConfiguration=false
+  # deliberately, so this per-call OutputLocation isn't overridden by the workgroup's own) - which
+  # needs its own write access, separate from raw/ and export-manifests/.
   # Athena calls s3:GetBucketLocation on the results bucket to verify it before running any
   # query at all - a bucket-level action with no "prefix" concept, so it can't be scoped by
   # s3:prefix like the ListBucket statements below. Missing this produces "Unable to
@@ -177,7 +206,7 @@ data "aws_iam_policy_document" "task_access" {
   statement {
     sid       = "CommitToIcebergQuery"
     actions   = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults"]
-    resources = ["*"] # No dedicated workgroup for the export task yet; revisit once Phase 2 gives it one.
+    resources = ["*"] # Not narrowed to aws_athena_workgroup.pipeline's ARN - GetQueryExecution/GetQueryResults address a query execution ID, not a workgroup-scoped resource.
   }
 
   # Same trap as terraform/modules/athena-workgroup/main.tf's GlueCuratedRead/GlueCatalogRoot:
@@ -229,6 +258,20 @@ data "aws_iam_policy_document" "task_access" {
   # throwaway staging tables) aren't strictly needed by curate's simpler no-staging-table flow -
   # kept anyway for consistency with the already-proven raw grant, rather than re-discovering the
   # same permission gaps from scratch a second time.
+  # cmd/compact (Phase 3) publishes the cost dashboard's S3-storage-by-prefix metric while it's
+  # already listing the bucket - cloudwatch:PutMetricData has no resource-level ARN scoping, so
+  # this is scoped via the cloudwatch:namespace condition key instead.
+  statement {
+    sid       = "PublishStorageMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["MTSAiDataLake/Storage"]
+    }
+  }
+
   statement {
     sid = "CommitToCurated"
     actions = [
@@ -291,6 +334,7 @@ resource "aws_ecs_task_definition" "export" {
         { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
         { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
         { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+        { name = "MTSAI_DATALAKE_WORKGROUP", value = aws_athena_workgroup.pipeline.name },
       ]
     }
   ])
@@ -336,6 +380,95 @@ resource "aws_ecs_task_definition" "curate" {
         { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
         { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
         { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+        { name = "MTSAI_DATALAKE_WORKGROUP", value = aws_athena_workgroup.pipeline.name },
+      ]
+    }
+  ])
+
+  tags = var.tags
+}
+
+# --- Compact task definition (weekly Iceberg hygiene, Phase 3 step 2) ---
+
+resource "aws_ecs_task_definition" "compact" {
+  family                   = "mtsai-datalake-${var.environment}-compact"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.cpu
+  memory                   = var.memory
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name       = "compact"
+      image      = var.container_image
+      entryPoint = ["/compact"]
+      essential  = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.export.name
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "compact"
+        }
+      }
+      environment = [
+        { name = "MTSAI_DATALAKE_ENV", value = var.environment },
+        { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
+        { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
+        { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+        { name = "MTSAI_DATALAKE_WORKGROUP", value = aws_athena_workgroup.pipeline.name },
+      ]
+    }
+  ])
+
+  tags = var.tags
+}
+
+# --- Erasure task definition (brief Section 9) - deliberately no schedule attached anywhere.
+# The trigger is an external verified request, not a clock, so this is manual-invoke-only via
+# `aws ecs run-task`, same as every other manual verification this project already does.
+
+resource "aws_ecs_task_definition" "erasure" {
+  family                   = "mtsai-datalake-${var.environment}-erasure"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.cpu
+  memory                   = var.memory
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name       = "erasure"
+      image      = var.container_image
+      entryPoint = ["/erasure"]
+      essential  = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.export.name
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "erasure"
+        }
+      }
+      environment = [
+        { name = "MTSAI_DATALAKE_ENV", value = var.environment },
+        { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
+        { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
+        { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+        { name = "MTSAI_DATALAKE_WORKGROUP", value = aws_athena_workgroup.pipeline.name },
       ]
     }
   ])
@@ -414,6 +547,9 @@ data "aws_iam_policy_document" "scheduler_run_task" {
     resources = [
       replace(aws_ecs_task_definition.export.arn, "/:\\d+$/", ":*"),
       replace(aws_ecs_task_definition.curate.arn, "/:\\d+$/", ":*"),
+      replace(aws_ecs_task_definition.compact.arn, "/:\\d+$/", ":*"),
+      # Deliberately no erasure task definition here - it has no schedule to run it, so the
+      # scheduler role never needs to.
     ]
     condition {
       test     = "ArnLike"
@@ -483,6 +619,34 @@ resource "aws_scheduler_schedule" "nightly_curate" {
 
     ecs_parameters {
       task_definition_arn = aws_ecs_task_definition.curate.arn
+      launch_type         = "FARGATE"
+
+      network_configuration {
+        subnets          = var.subnet_ids
+        security_groups  = [aws_security_group.export_task[0].id]
+        assign_public_ip = true
+      }
+    }
+  }
+}
+
+resource "aws_scheduler_schedule" "weekly_compact" {
+  count      = local.export_schedule_enabled ? 1 : 0
+  name       = "mtsai-datalake-${var.environment}-weekly-compact"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = var.compact_schedule_expression
+
+  target {
+    arn      = aws_ecs_cluster.export.arn
+    role_arn = aws_iam_role.scheduler[0].arn
+
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.compact.arn
       launch_type         = "FARGATE"
 
       network_configuration {

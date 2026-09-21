@@ -11,22 +11,30 @@ import (
 )
 
 // AthenaRunner runs SQL statements against a fixed database, polling until each one finishes.
-// No dedicated Athena workgroup exists for the export job yet (its IAM role is scoped directly,
-// not through a workgroup - see terraform/modules/export-task/main.tf's CommitToIcebergQuery
-// statement), so OutputLocation is passed explicitly on every query instead of relying on a
-// workgroup's configured results location.
+// WorkGroup should always be set explicitly (never left to default to "primary") - found the hard
+// way (Phase 3) that leaving it unset let a query run against a stale cached Iceberg snapshot
+// (undercounting a live table by 11 rows, reproducible, unrelated to Athena's query-result-reuse
+// feature which was confirmed off) while an explicit workgroup consistently saw the correct
+// current data. OutputLocation is still passed explicitly on every query rather than relying on
+// the workgroup's own configured result location, since different callers write to different
+// prefixes.
 type AthenaRunner struct {
 	Client         *athena.Client
 	Database       string
 	OutputLocation string
+	WorkGroup      string
 }
 
 func (r *AthenaRunner) Run(ctx context.Context, sql string) (*athena.GetQueryExecutionOutput, error) {
-	start, err := r.Client.StartQueryExecution(ctx, &athena.StartQueryExecutionInput{
+	input := &athena.StartQueryExecutionInput{
 		QueryString:           aws.String(sql),
 		QueryExecutionContext: &types.QueryExecutionContext{Database: aws.String(r.Database)},
 		ResultConfiguration:   &types.ResultConfiguration{OutputLocation: aws.String(r.OutputLocation)},
-	})
+	}
+	if r.WorkGroup != "" {
+		input.WorkGroup = aws.String(r.WorkGroup)
+	}
+	start, err := r.Client.StartQueryExecution(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("start query execution: %w\nsql: %s", err, sql)
 	}

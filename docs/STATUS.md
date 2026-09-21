@@ -435,7 +435,85 @@ hand.
 
 ## Phase 3 — Governance and erasure
 
-**Status:** Not started.
+**Status:** All four brief-defined build steps done and verified in Test (2026-09-21). The brief's
+own "done when" (an erasure executed and verified, cost dashboard exists) is met.
+
+### S3 lifecycle was already live — just never flagged as closing this item
+
+Research at the start of this phase found `terraform/modules/lake-bucket/main.tf` has had an
+`aws_s3_bucket_lifecycle_configuration` since Phase 1 — Intelligent Tiering at 30 days, Glacier
+Instant Retrieval at 365 days for `raw/`, exactly matching brief step 2's numbers. It landed
+silently as part of the bucket module and was never recorded as closing part of Phase 3 (the
+module's own README is also stale, still says "not yet implemented"). No new work was needed here,
+just recording that it's real.
+
+### Weekly Iceberg hygiene (`cmd/compact`) and the erasure job (`cmd/erasure`)
+
+Two new binaries, same image/task role pattern as `cmd/curate`. `cmd/compact` runs Athena `VACUUM`
+weekly (`cron(0 3 ? * SUN *)` UTC, Sunday 03:00) against both Iceberg tables, and piggybacks the
+cost dashboard's S3-storage-by-prefix metric while it already has bucket read access. `cmd/erasure`
+implements `runbooks/erasure.md`'s five-step procedure exactly, invoked manually only (no
+schedule — the trigger is an external verified request, not a clock).
+
+Also gave the pipeline its own dedicated Athena workgroup (`aws_athena_workgroup.pipeline`) — see
+below, this was a genuine correctness fix, not just a Phase 3 nicety.
+
+### Cost dashboard and budgets
+
+New `terraform/modules/cost-dashboard` module: a `aws_cloudwatch_dashboard` with three widgets —
+S3 storage by prefix (the custom metric from `cmd/compact`), Athena bytes scanned by workgroup
+(native `AWS/Athena` `ProcessedBytes`, no custom code needed), and Fargate run duration by day (a
+Logs Insights query parsing the `duration=X.XXs` every job already logs). Set
+`alarm_email = "siby@miracletraffic.ai"` in `terraform/envs/test/variables.tf`, which activated
+three already-coded-but-dormant per-consumer `aws_budgets_budget` resources ($50/$50/$25 monthly
+for analytics/forecasting/audit) and the export/curate failure-alert SNS subscription — both had
+existed since earlier phases, just gated on this being non-empty. **The SNS subscription is
+`PendingConfirmation`** — needs the confirmation email at that address clicked before alerts
+actually deliver.
+
+### Manifest format documented
+
+New `docs/manifest-format.md` — the brief's own fallback ("document the manifest format" if not
+wired into a real audit service, which doesn't exist). Covers all three manifest types
+(`Manifest`, `BackfillSummary`, `ErasureManifest`) field-by-field with real examples pulled from S3.
+
+### Erasure rehearsed for real, twice - found and fixed two real bugs
+
+First rehearsal attempt surfaced that every Athena call across the *entire* project (`cmd/export`,
+`cmd/curate`, `cmd/compact`, and `cmd/erasure`) had never specified an Athena workgroup, silently
+defaulting to "primary" — which turned out to be serving a **stale cached Iceberg snapshot**,
+reproducibly undercounting a live table by 11 rows (confirmed unrelated to query-result-reuse,
+tested explicitly disabled). Fixed by giving the pipeline its own dedicated workgroup and adding a
+`WorkGroup` field to `internal/lake.AthenaRunner`, set on every call across all four binaries.
+Worth being direct about the implication: every reconciliation/idempotency "match" earlier in this
+project queried via the same unset default - in practice the actual writes always appeared to
+commit correctly against the live table (independently re-verified many times against a
+correctly-workgrouped query), so this looks like a read-path-only issue, not silent data
+corruption, but it's the reason this fix was treated as urgent rather than deferred.
+
+After that fix, a second issue surfaced: an identifier with zero rows in a table (e.g. present in
+raw but not yet curated) made the time-travel check fail, because a `DELETE` matching nothing
+doesn't create a new Iceberg snapshot, so the "pre-erasure" snapshot is just the unchanged current
+one, which correctly still resolves. Fixed by treating zero-rows-before as a trivial success for
+that table, not a failure — this is a routine case in real usage, not an edge case worth skipping.
+
+Then, deploying both new jobs to AWS, `cmd/compact`'s first real run under the actual task role
+failed listing the whole `athena-results/` zone - its `ListBucket` grant is deliberately scoped to
+only its own `athena-results/export/` subfolder (not other consumer workgroups' results, the same
+class of key-enumeration leak already fixed once in Phase 1). Fixed by narrowing the job's own
+ambition to match the already-correctly-scoped permission, not by widening the grant.
+
+**Final verified rehearsal** (`runbooks/erasure.md` has the full log): identifier `hash_veh_000067`
+- 10 rows in raw, 1 in curated, both erased, both independently confirmed time-travel-blocked
+("Iceberg snapshot ID does not exists" on the pre-erasure snapshot, not just zero rows), 28.03s
+end-to-end. Then confirmed the same working under the **real deployed task role** (not local
+credentials) with a fresh identifier, `hash_veh_001327`, exercising both the real-erasure and the
+zero-rows-nothing-to-erase paths in one run.
+
+**Bug count now 16** across the whole project - the 13 already enumerated in
+`docs/MTSAi-Data-Lake-Build-Report.pdf`, plus this phase's three: the stale-workgroup snapshot
+read, the zero-rows time-travel false-failure, and `cmd/compact`'s over-broad `athena-results/`
+listing attempt.
 
 ## Phase 4 — Postgres trim and promotion
 

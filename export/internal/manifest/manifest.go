@@ -67,3 +67,41 @@ func UploadBackfillSummary(ctx context.Context, client *s3.Client, bucket string
 	key := fmt.Sprintf("export-manifests/backfill/%s_%s/summary.json", s.StartDate, s.EndDate)
 	return lake.UploadBytes(ctx, client, bucket, key, body, "application/json")
 }
+
+// TableErasureResult is one table's outcome within an ErasureManifest (runbooks/erasure.md steps
+// 2-4: delete, expire snapshots, verify).
+type TableErasureResult struct {
+	Database             string `json:"database"`
+	Table                string `json:"table"`
+	RowsBefore           int64  `json:"rows_before"`
+	RowsAfterDelete      int64  `json:"rows_after_delete"`
+	PreErasureSnapshotID string `json:"pre_erasure_snapshot_id,omitempty"`
+	TimeTravelBlocked    bool   `json:"time_travel_blocked"`
+	Success              bool   `json:"success"`
+	Error                string `json:"error,omitempty"`
+}
+
+// ErasureManifest is the evidence trail for one erasure request (runbooks/erasure.md step 1:
+// "record the request reference... before touching data", step 5: "record results against the
+// request reference"). Written twice: once immediately on receipt (before any DELETE runs), once
+// again on completion.
+type ErasureManifest struct {
+	RequestRef      string               `json:"request_ref"`
+	Identifier      string               `json:"identifier"`
+	Jurisdiction    string               `json:"jurisdiction,omitempty"`
+	Tables          []TableErasureResult `json:"tables"`
+	StartedAt       time.Time            `json:"started_at"`
+	FinishedAt      time.Time            `json:"finished_at,omitzero"`
+	DurationSeconds float64              `json:"duration_seconds,omitempty"`
+	Success         bool                 `json:"success"`
+	Error           string               `json:"error,omitempty"`
+}
+
+func UploadErasureManifest(ctx context.Context, client *s3.Client, bucket string, m ErasureManifest) error {
+	body, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling erasure manifest: %w", err)
+	}
+	key := fmt.Sprintf("export-manifests/erasure/%s/%s.json", m.StartedAt.Format("2006-01-02"), m.RequestRef)
+	return lake.UploadBytes(ctx, client, bucket, key, body, "application/json")
+}

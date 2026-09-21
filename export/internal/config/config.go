@@ -52,6 +52,7 @@ type Config struct {
 	Bucket      string
 	RawDatabase string
 	Region      string
+	WorkGroup   string
 	RunDate     time.Time
 	RunDates    []time.Time // set instead of RunDate when EXPORT_START_DATE/EXPORT_END_DATE are used (backfill mode)
 	Postgres    PostgresCredentials
@@ -67,6 +68,7 @@ func Load(getenv func(string) string, readFile func(string) ([]byte, error)) (*C
 		Bucket:      getenv("MTSAI_DATALAKE_BUCKET"),
 		RawDatabase: getenv("MTSAI_DATALAKE_RAW_DATABASE"),
 		Region:      getenv("AWS_REGION"),
+		WorkGroup:   getenv("MTSAI_DATALAKE_WORKGROUP"),
 	}
 	if cfg.Environment == "" || cfg.Bucket == "" || cfg.RawDatabase == "" {
 		return nil, fmt.Errorf("MTSAI_DATALAKE_ENV, MTSAI_DATALAKE_BUCKET, and MTSAI_DATALAKE_RAW_DATABASE are all required")

@@ -40,3 +40,26 @@ func UploadBytes(ctx context.Context, client *s3.Client, bucket, key string, bod
 	}
 	return nil
 }
+
+// SumObjectSizes returns the total byte size of every object under prefix - used by cmd/compact
+// to publish the cost dashboard's per-prefix storage metric, since CloudWatch's native S3 metrics
+// are bucket-level only.
+func SumObjectSizes(ctx context.Context, client *s3.Client, bucket, prefix string) (int64, error) {
+	var total int64
+	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("listing s3://%s/%s: %w", bucket, prefix, err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Size != nil {
+				total += *obj.Size
+			}
+		}
+	}
+	return total, nil
+}
