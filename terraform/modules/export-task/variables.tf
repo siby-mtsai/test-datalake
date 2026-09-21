@@ -43,7 +43,7 @@ variable "container_image" {
 variable "schedule_expression" {
   description = "EventBridge Scheduler cron/rate expression for the nightly export run."
   type        = string
-  default     = "cron(0 20 * * ? *)" # 20:00 UTC == 01:30 IST, inside the assumed low-traffic window
+  default     = "cron(0 7 * * ? *)" # 07:00 UTC == 12:30 IST
 }
 
 variable "cpu" {
