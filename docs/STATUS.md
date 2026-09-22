@@ -523,11 +523,71 @@ end-to-end. Then confirmed the same working under the **real deployed task role*
 credentials) with a fresh identifier, `hash_veh_001327`, exercising both the real-erasure and the
 zero-rows-nothing-to-erase paths in one run.
 
-**Bug count now 16** across the whole project - the 13 already enumerated in
-`docs/MTSAi-Data-Lake-Build-Report.pdf`, plus this phase's three: the stale-workgroup snapshot
-read, the zero-rows time-travel false-failure, and `cmd/compact`'s over-broad `athena-results/`
-listing attempt.
+**Bug count now 18** across the whole project - the 13 already enumerated in
+`docs/MTSAi-Data-Lake-Build-Report.pdf`, Phase 3's three (the stale-workgroup snapshot read, the
+zero-rows time-travel false-failure, and `cmd/compact`'s over-broad `athena-results/` listing
+attempt), plus Phase 4's two: the partition-migration index/constraint name collision on swap, and
+the OCI-image-index container build that Fargate couldn't pull (see above).
 
 ## Phase 4 — Postgres trim and promotion
 
-**Status:** Not started.
+**Status:** Steps 1-2 done and verified against real Test AWS (`mtsai-api-sim-test`). Steps 3-4 out
+of scope for now (see below).
+
+- **Step 1 (native partitioning)**: `sql/postgres/partition_trip_events.sql` — a one-time,
+  run-by-hand migration converting `trip_events` from a plain table into a daily
+  range-partitioned one (`PARTITION BY RANGE (event_date)`, one partition per calendar date,
+  named `trip_events_yYYYY_mMM_dDD`, plus a `trip_events_default` safety-net partition). Not a
+  Terraform resource — Postgres can't `ALTER TABLE ... PARTITION BY` in place on a table with
+  existing data, so this creates a new partitioned table, copies the data across, and swaps it in
+  under the original name, same precedent as the Phase 2 curated-table CTAS
+  (`sql/curated/trip_events_curated.sql`). No `psql` client exists in this environment, so
+  `tools/pg-query` (previously a single-statement Phase 0 discovery tool) gained a `-f <path>`
+  mode to run this migration's multi-statement steps.
+
+  **Run for real on 2026-09-22** against `mtsai-api-sim-test`: 35,000 rows, checksum unchanged
+  before/after, now genuinely `PARTITION BY RANGE (event_date)` across 362 partitions (361 dated +
+  the default). One real bug found rehearsing it: the swap step first failed because renaming a
+  table doesn't rename its indexes/constraints, so the old `idx_trip_events_city_date`/
+  `trip_events_pkey` names collided with the new table's own — the whole step is one transaction,
+  so the failure rolled back cleanly with zero partial state, confirmed independently before
+  fixing the script (rename the old names out of the way first) and re-running successfully. Full
+  before/after numbers and the bug in `runbooks/postgres-partitioning.md`'s rehearsal log.
+  `trip_events_pre_partition_backup` (the pre-migration table) is intentionally still there as a
+  rollback window, not yet dropped.
+- **Step 2 (retention-gated trim)**: new `cmd/trim` binary (`export/cmd/trim/main.go`), same
+  container image, own ECS task definition, weekly EventBridge schedule
+  (`cron(0 4 ? * SUN *)` UTC — one hour after `weekly_compact`, confirmed `ENABLED`). Two jobs per
+  run: pre-creates the next 14 days of partitions so inserts never fall into the default
+  partition, and drops partitions older than 90 days — but **only** when
+  `export-manifests/{event_date}/trip_events.json` exists in S3 and reports `success: true`; a
+  missing or failing manifest is skipped and logged, never dropped on missing evidence. Writes its
+  own `export-manifests/trim/{date}/summary.json` evidence trail (documented in
+  `docs/manifest-format.md`). Granularity (daily) and retention (90 days) were both explicit
+  choices, confirmed before building: daily matches the manifest's own per-date granularity
+  exactly, and 90 days matches `mtsai-api-sim`'s "recent" seed window.
+
+  **Deployed and manually invoked for real on 2026-09-22.** Result, independently confirmed
+  against Postgres afterward: 14 future partitions created, 31 dropped (every date from the Phase
+  2 backfill rehearsal plus the one earlier single-date run, all with confirmed `success: true`
+  manifests), 245 skipped (every unexported `SEED_EXTEND_HISTORY` date, correctly left alone on
+  missing evidence). Row count 35,000 → 31,670, partition count 362 → 345
+  (`362 - 31 + 14`), both re-queried independently, not trusted from the job's own log.
+
+  **One real deployment bug found getting there** — not in `cmd/trim` itself, in the container
+  image build: `docker build`/push produced an OCI image index (BuildKit's newer default of
+  attaching provenance/SBOM attestations even to a single-platform build), which Fargate failed to
+  pull (`CannotPullContainerError: ... does not contain descriptor matching platform 'linux/arm64
+  v8'`) despite the image genuinely being arm64. Fixed with `docker build --provenance=false
+  --sbom=false ...`, producing a plain manifest Fargate pulls correctly. Full log excerpt and
+  numbers in `runbooks/postgres-partitioning.md`'s rehearsal log.
+- **Step 3 (promote to pre-prod)**: not buildable — `terraform/envs/preprod/` is confirmed to be
+  an empty stub ("Not implemented — account ID not yet confirmed"). No pre-prod AWS account exists
+  to promote into. Prod promotion is explicitly a CTO checkpoint (brief Section 12) regardless.
+- **Step 4 (one-month review)**: not buildable yet — requires real elapsed time after steps 1-2 go
+  live, same as every other phase's final observation step.
+
+Worth flagging once this ships: brief Section 12 checkpoint 2 ("Any change to the partition
+strategy after backfill has started") is a CTO checkpoint, and backfill has in fact already
+started on `trip_events` (Phase 2 step 5). Noted honestly rather than silently skipped — no prod
+data is at risk (Test-only), but the checkpoint language exists for a reason.

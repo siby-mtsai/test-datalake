@@ -64,6 +64,10 @@ instead of `EXPORT_DATE`) run a backfill over that inclusive date range instead 
 to the env vars above (not `POSTGRES_CREDENTIALS` — it never touches Postgres) and
 `CURATE_DATE` (optional, mirrors `EXPORT_DATE`).
 
+`cmd/trim` (Phase 4, `runbooks/postgres-partitioning.md`) only needs `MTSAI_DATALAKE_BUCKET` and
+`POSTGRES_CREDENTIALS` — it never touches Athena/Glue. `TRIM_RETENTION_DAYS` (default 90) and
+`TRIM_LOOKAHEAD_DAYS` (default 14) are optional overrides.
+
 ## Running automatically in Test
 
 As of 2026-09-21, the real image is built and pushed to `export-task`'s ECR repo, and two

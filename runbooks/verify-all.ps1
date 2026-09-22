@@ -5,16 +5,18 @@
 # Usage:
 #   .\runbooks\verify-all.ps1                              # read-only status check, all phases
 #   .\runbooks\verify-all.ps1 -RunCompact                  # also triggers a real cmd/compact run
+#   .\runbooks\verify-all.ps1 -RunTrim                     # also triggers a real cmd/trim run
 #   .\runbooks\verify-all.ps1 -SendTestAlert               # also publishes a real test SNS message
 #   .\runbooks\verify-all.ps1 -EraseIdentifier hash_veh_000067   # DESTRUCTIVE - actually erases that identifier
 #
-# Any combination of the three action switches/parameters can be passed together.
+# Any combination of the four action switches/parameters can be passed together.
 
 param(
     [string]$Environment = "test",
     [string]$AccountId = "690293068614",
     [string]$Region = "ap-south-1",
     [switch]$RunCompact,
+    [switch]$RunTrim,
     [switch]$SendTestAlert,
     [string]$EraseIdentifier,
     [string]$EraseRequestRef = "manual-verify-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
@@ -61,7 +63,7 @@ Section "Phase 2/3 - Recent runs (from CloudWatch Logs, last 5 per job)"
 $allStreams = aws logs describe-log-streams --region $Region --log-group-name "/mtsai-datalake/${Environment}/export" `
     --order-by LastEventTime --descending --max-items 50 `
     --query "logStreams[*].{name:logStreamName,lastEvent:lastEventTimestamp}" --output json | ConvertFrom-Json
-foreach ($job in @("export", "curate", "compact", "erasure")) {
+foreach ($job in @("export", "curate", "compact", "erasure", "trim")) {
     $matches = $allStreams | Where-Object { $_.name -like "$job/*" } | Select-Object -First 5
     if ($matches) {
         Write-Host "$job :"
@@ -119,10 +121,31 @@ if ($metrics) {
     Write-Host "No metrics published yet - run with -RunCompact to publish some" -ForegroundColor DarkYellow
 }
 
+# --- Phase 4: weekly trim schedule + evidence trail ---
+Section "Phase 4 - Weekly Postgres trim schedule"
+$trimSched = aws scheduler get-schedule --name "mtsai-datalake-${Environment}-weekly-trim" --group-name default --region $Region | ConvertFrom-Json
+if ($trimSched) {
+    Write-Host "weekly-trim : $($trimSched.State), $($trimSched.ScheduleExpression) $($trimSched.ScheduleExpressionTimezone)"
+} else {
+    Write-Host "weekly-trim : NOT FOUND" -ForegroundColor Red
+}
+
+Section "Phase 4 - Trim manifest evidence trail (S3)"
+$trimManifestCount = (aws s3 ls "s3://$Bucket/export-manifests/trim/" --recursive --region $Region | Measure-Object -Line).Lines
+Write-Host "export-manifests/trim/ object count: $trimManifestCount"
+
 # --- Optional live actions (only run if explicitly requested) ---
 if ($RunCompact) {
     Section "ACTION: Triggering cmd/compact"
     $result = aws ecs run-task --region $Region --cluster $Cluster --task-definition "mtsai-datalake-${Environment}-compact" `
+        --launch-type FARGATE --network-configuration (New-NetworkConfig) --output json | ConvertFrom-Json
+    Write-Host "Launched: $($result.tasks[0].taskArn)"
+    Write-Host "Poll with: aws ecs describe-tasks --region $Region --cluster $Cluster --tasks $($result.tasks[0].taskArn)"
+}
+
+if ($RunTrim) {
+    Section "ACTION: Triggering cmd/trim"
+    $result = aws ecs run-task --region $Region --cluster $Cluster --task-definition "mtsai-datalake-${Environment}-trim" `
         --launch-type FARGATE --network-configuration (New-NetworkConfig) --output json | ConvertFrom-Json
     Write-Host "Launched: $($result.tasks[0].taskArn)"
     Write-Host "Poll with: aws ecs describe-tasks --region $Region --cluster $Cluster --tasks $($result.tasks[0].taskArn)"
@@ -151,4 +174,4 @@ if ($EraseIdentifier) {
 }
 
 Write-Host ""
-Write-Host "Done. Pass -RunCompact, -SendTestAlert, or -EraseIdentifier <hash> to also trigger real actions (erasure is destructive)." -ForegroundColor DarkGray
+Write-Host "Done. Pass -RunCompact, -RunTrim, -SendTestAlert, or -EraseIdentifier <hash> to also trigger real actions (erasure is destructive)." -ForegroundColor DarkGray

@@ -1,6 +1,12 @@
 // Command pg-query runs one SQL statement (passed as argv[1]) against PG* env vars and prints
 // the result as a simple text table. No psql client exists in this environment - this is a
-// minimal stand-in, used for Phase 0 discovery queries against mtsai-api-sim.
+// minimal stand-in, used for Phase 0 discovery queries against mtsai-api-sim, and for running the
+// one-time migration scripts under sql/postgres/.
+//
+// `pg-query -f <path>` instead runs the whole file's contents as one multi-statement batch via
+// Exec (Postgres's simple query protocol executes a semicolon-separated batch as one implicit
+// transaction, or respects explicit BEGIN/COMMIT inside it) - needed for migrations like
+// sql/postgres/partition_trip_events.sql's step 5 swap, which must be atomic.
 package main
 
 import (
@@ -14,8 +20,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: pg-query \"<sql>\"")
+	if len(os.Args) < 2 {
+		log.Fatal("usage: pg-query \"<sql>\"  |  pg-query -f <path>")
 	}
 
 	ctx := context.Background()
@@ -28,7 +34,31 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
-	rows, err := conn.Query(ctx, os.Args[1])
+	if os.Args[1] == "-f" {
+		if len(os.Args) != 3 {
+			log.Fatal("usage: pg-query -f <path>")
+		}
+		runFile(ctx, conn, os.Args[2])
+		return
+	}
+
+	runQuery(ctx, conn, os.Args[1])
+}
+
+func runFile(ctx context.Context, conn *pgx.Conn, path string) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("reading %s: %v", path, err)
+	}
+	tag, err := conn.Exec(ctx, string(body))
+	if err != nil {
+		log.Fatalf("exec %s: %v", path, err)
+	}
+	fmt.Fprintf(os.Stderr, "OK: %s\n", tag.String())
+}
+
+func runQuery(ctx context.Context, conn *pgx.Conn, sql string) {
+	rows, err := conn.Query(ctx, sql)
 	if err != nil {
 		log.Fatalf("query: %v", err)
 	}

@@ -105,3 +105,37 @@ func UploadErasureManifest(ctx context.Context, client *s3.Client, bucket string
 	key := fmt.Sprintf("export-manifests/erasure/%s/%s.json", m.StartedAt.Format("2006-01-02"), m.RequestRef)
 	return lake.UploadBytes(ctx, client, bucket, key, body, "application/json")
 }
+
+// PartitionResult is one Postgres partition's outcome within a TrimSummary - either dropped (with
+// the row count captured immediately before the drop) or skipped (with why: no manifest yet, or a
+// manifest that reports success:false - cmd/trim never drops on missing or failing evidence).
+type PartitionResult struct {
+	Date     string `json:"date"`
+	RowCount int64  `json:"row_count,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// TrimSummary is the evidence trail for one cmd/trim run (brief Phase 4 step 2: "drop Postgres
+// partitions older than the retention window only after reconciliation for that range has passed
+// and the manifest is in S3").
+type TrimSummary struct {
+	RunDate           string             `json:"run_date"`
+	RunID             string             `json:"run_id"`
+	RetentionDays     int                `json:"retention_days"`
+	PartitionsCreated []string           `json:"partitions_created"`
+	PartitionsDropped []PartitionResult  `json:"partitions_dropped"`
+	PartitionsSkipped []PartitionResult  `json:"partitions_skipped"`
+	DurationSeconds   float64            `json:"duration_seconds"`
+	GeneratedAt       time.Time          `json:"generated_at"`
+	Success           bool               `json:"success"`
+	Error             string             `json:"error,omitempty"`
+}
+
+func UploadTrimSummary(ctx context.Context, client *s3.Client, bucket string, s TrimSummary) error {
+	body, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling trim summary: %w", err)
+	}
+	key := fmt.Sprintf("export-manifests/trim/%s/summary.json", s.RunDate)
+	return lake.UploadBytes(ctx, client, bucket, key, body, "application/json")
+}

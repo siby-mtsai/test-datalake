@@ -18,6 +18,10 @@ output "erasure_task_definition_arn" {
   value = aws_ecs_task_definition.erasure.arn
 }
 
+output "trim_task_definition_arn" {
+  value = aws_ecs_task_definition.trim.arn
+}
+
 output "export_task_security_group_id" {
   description = "Security group used by both the export and curate Fargate tasks - null until the schedule is enabled."
   value       = local.export_schedule_enabled ? aws_security_group.export_task[0].id : null

@@ -476,6 +476,57 @@ resource "aws_ecs_task_definition" "erasure" {
   tags = var.tags
 }
 
+# --- Trim task definition (weekly Postgres partition maintenance, Phase 4 steps 1-2) ---
+# Unlike erasure, the drop condition here is objectively checkable purely from S3 state (a date's
+# export manifest exists and success=true), so this runs on its own schedule below rather than
+# being manual-invoke-only.
+
+resource "aws_ecs_task_definition" "trim" {
+  family                   = "mtsai-datalake-${var.environment}-trim"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.cpu
+  memory                   = var.memory
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name       = "trim"
+      image      = var.container_image
+      entryPoint = ["/trim"]
+      essential  = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.export.name
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "trim"
+        }
+      }
+      secrets = var.postgres_secret_arn != "" ? [
+        { name = "POSTGRES_CREDENTIALS", valueFrom = var.postgres_secret_arn }
+      ] : []
+      environment = [
+        { name = "MTSAI_DATALAKE_ENV", value = var.environment },
+        { name = "MTSAI_DATALAKE_BUCKET", value = var.bucket_name },
+        { name = "MTSAI_DATALAKE_RAW_DATABASE", value = var.raw_database_name },
+        { name = "MTSAI_DATALAKE_CURATED_DATABASE", value = var.curated_database_name },
+        { name = "MTSAI_DATALAKE_WORKGROUP", value = aws_athena_workgroup.pipeline.name },
+        { name = "TRIM_RETENTION_DAYS", value = tostring(var.trim_retention_days) },
+        { name = "TRIM_LOOKAHEAD_DAYS", value = tostring(var.trim_lookahead_days) },
+      ]
+    }
+  ])
+
+  tags = var.tags
+}
+
 data "aws_region" "current" {}
 
 # --- Nightly schedule (EventBridge Scheduler -> ecs:RunTask) ---
@@ -548,6 +599,7 @@ data "aws_iam_policy_document" "scheduler_run_task" {
       replace(aws_ecs_task_definition.export.arn, "/:\\d+$/", ":*"),
       replace(aws_ecs_task_definition.curate.arn, "/:\\d+$/", ":*"),
       replace(aws_ecs_task_definition.compact.arn, "/:\\d+$/", ":*"),
+      replace(aws_ecs_task_definition.trim.arn, "/:\\d+$/", ":*"),
       # Deliberately no erasure task definition here - it has no schedule to run it, so the
       # scheduler role never needs to.
     ]
@@ -647,6 +699,34 @@ resource "aws_scheduler_schedule" "weekly_compact" {
 
     ecs_parameters {
       task_definition_arn = aws_ecs_task_definition.compact.arn
+      launch_type         = "FARGATE"
+
+      network_configuration {
+        subnets          = var.subnet_ids
+        security_groups  = [aws_security_group.export_task[0].id]
+        assign_public_ip = true
+      }
+    }
+  }
+}
+
+resource "aws_scheduler_schedule" "weekly_trim" {
+  count      = local.export_schedule_enabled ? 1 : 0
+  name       = "mtsai-datalake-${var.environment}-weekly-trim"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = var.trim_schedule_expression
+
+  target {
+    arn      = aws_ecs_cluster.export.arn
+    role_arn = aws_iam_role.scheduler[0].arn
+
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.trim.arn
       launch_type         = "FARGATE"
 
       network_configuration {

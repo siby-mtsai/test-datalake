@@ -63,6 +63,24 @@ variable "compact_schedule_expression" {
   default     = "cron(0 3 ? * SUN *)" # 03:00 UTC every Sunday - low-traffic window, off the nightly export/curate path
 }
 
+variable "trim_schedule_expression" {
+  description = "EventBridge Scheduler cron/rate expression for the weekly Postgres partition trim run (brief Phase 4 steps 1-2). Offset after compact_schedule_expression."
+  type        = string
+  default     = "cron(0 4 ? * SUN *)" # 04:00 UTC every Sunday - one hour after weekly_compact
+}
+
+variable "trim_retention_days" {
+  description = "How many days of trip_events partitions cmd/trim keeps in Postgres before a date becomes eligible to drop (once its export manifest confirms success)."
+  type        = number
+  default     = 90
+}
+
+variable "trim_lookahead_days" {
+  description = "How many days of future trip_events partitions cmd/trim keeps pre-created ahead of today."
+  type        = number
+  default     = 14
+}
+
 variable "cpu" {
   description = "Fargate task CPU units."
   type        = string

@@ -3,11 +3,14 @@ package lake
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 func UploadFile(ctx context.Context, client *s3.Client, bucket, key, localPath string) error {
@@ -39,6 +42,26 @@ func UploadBytes(ctx context.Context, client *s3.Client, bucket, key string, bod
 		return fmt.Errorf("uploading to s3://%s/%s: %w", bucket, key, err)
 	}
 	return nil
+}
+
+// GetObjectBytes downloads a single object, returning (nil, false, nil) if it doesn't exist rather
+// than an error - used by cmd/trim to tell "this date was never exported" (no manifest) apart from
+// a real S3 failure, since the trim gate must never drop a partition on missing evidence.
+func GetObjectBytes(ctx context.Context, client *s3.Client, bucket, key string) ([]byte, bool, error) {
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("getting s3://%s/%s: %w", bucket, key, err)
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading s3://%s/%s: %w", bucket, key, err)
+	}
+	return body, true, nil
 }
 
 // SumObjectSizes returns the total byte size of every object under prefix - used by cmd/compact

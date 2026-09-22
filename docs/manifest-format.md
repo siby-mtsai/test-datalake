@@ -5,7 +5,7 @@ service can reference") and Section 7 Phase 3 step 3 ("wire export manifests int
 service expects, or document the manifest format for it"). No real audit service integration
 point exists yet, so this document is the fallback the brief itself names.
 
-All three manifest types are plain JSON objects written to S3 under `export-manifests/`, produced
+All four manifest types are plain JSON objects written to S3 under `export-manifests/`, produced
 by `export/internal/manifest/manifest.go` — that file is the source of truth if this doc and the
 code ever disagree. Every field below is real and taken from a manifest actually produced this
 project, not a hypothetical schema.
@@ -142,3 +142,43 @@ everywhere it appears)
 | `started_at` / `finished_at` | string (RFC 3339, UTC) | `finished_at` is absent on the first (pre-DELETE) write of this manifest |
 | `duration_seconds` | float | End-to-end time (brief step 1: "measure end-to-end erasure time for a single identifier") |
 | `success` | boolean | AND of every table's `success` |
+
+## Trim summary (`TrimSummary`)
+
+Written once per `cmd/trim` run (brief Phase 4 step 2: "drop Postgres partitions older than the
+retention window only after reconciliation for that range has passed and the manifest is in S3").
+See `runbooks/postgres-partitioning.md` for the full mechanism.
+
+**Path**: `export-manifests/trim/{run_date}/summary.json`
+
+**Example**:
+
+```json
+{
+  "run_date": "2026-09-28",
+  "run_id": "8f2a5e6d-1b3c-4a9e-9d2f-6c7b8a9e0f1d",
+  "retention_days": 90,
+  "partitions_created": ["trip_events_y2026_m09_d29", "trip_events_y2026_m09_d30"],
+  "partitions_dropped": [
+    { "date": "2025-09-30", "row_count": 61 }
+  ],
+  "partitions_skipped": [
+    { "date": "2025-10-01", "reason": "no export manifest found in S3" }
+  ],
+  "duration_seconds": 4.21,
+  "generated_at": "2026-09-28T04:00:12Z",
+  "success": true
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `run_date` | string (`YYYY-MM-DD`) | The date this trim run executed, in UTC |
+| `run_id` | string (UUID) | Unique per run |
+| `retention_days` | integer | The retention window enforced this run (`TRIM_RETENTION_DAYS`) |
+| `partitions_created` | array of strings | Future daily partitions newly created this run (already-existing ones aren't listed) |
+| `partitions_dropped` | array | Partitions actually dropped — `date`, and `row_count` captured immediately before the `DROP TABLE` |
+| `partitions_skipped` | array | Partitions old enough to be eligible but left alone — `date` and `reason` (`"no export manifest found in S3"`, `"manifest reports success=false"`, or a parse error) |
+| `duration_seconds` | float | Wall-clock time for this run |
+| `generated_at` | string (RFC 3339, UTC) | When the summary was written |
+| `success` | boolean | `false` only if the run itself failed (e.g. couldn't connect to Postgres) — a normal run with skipped partitions is still `success: true` |
