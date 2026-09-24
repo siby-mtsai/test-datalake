@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/MTSAi-Data-Lake-Data-Flow.png.
+  Every step, SQL statement and S3 key here is taken from export/cmd/export, export/cmd/curate,
+  export/internal/* and sql/curated/trip_events_curated.sql.
+  Re-render after editing (PowerShell, from repo root):
+    $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+    & $edge --headless --disable-gpu --hide-scrollbars --window-size=1800,2290 --screenshot="docs\MTSAi-Data-Lake-Data-Flow.png" "file:///$PWD/docs/diagrams/data-flow.html"
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MTSAi Data Lake Data Flow</title>
+<style>
+  :root {
+    --ink: #232F3E; --sub: #545B64; --line: #D5DBDB; --bg: #F7F8FA;
+    --pg: #336791; --go: #007D9C; --s3: #3F8624; --ath: #8C4FFF; --glue: #D6246E; --man: #B7791F;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; }
+  body { width: 1800px; font-family: "Segoe UI", Arial, sans-serif; color: var(--ink); padding: 28px 32px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .lead { font-size: 14px; color: var(--sub); margin: 0 0 18px; }
+  code, .m { font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+  .wrap { display: grid; grid-template-columns: 1010px 1fr; gap: 26px; }
+
+  /* schedule strip */
+  .sched { display: flex; gap: 10px; margin-bottom: 18px; }
+  .sched div { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--bg); font-size: 13px; }
+  .sched b { display: block; font-size: 15px; }
+
+  /* phases + step cards */
+  .phase { margin: 0 0 10px; padding: 8px 14px; border-radius: 8px; color: #fff; font-weight: 700; font-size: 16px; display: flex; justify-content: space-between; }
+  .phase span { font-weight: 400; font-size: 13px; opacity: .95; }
+  .p0 { background: #545B64; } .pa { background: var(--go); } .pb { background: #1D6F42; } .pc { background: #6B4E16; }
+  .step { display: grid; grid-template-columns: 46px 1fr; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 10px; background: #fff; }
+  .num { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .step h3 { margin: 0; font-size: 15px; }
+  .step h3 .fn { font-family: Consolas, monospace; font-size: 13px; color: var(--go); font-weight: 700; }
+  .step h3 .file { font-weight: 400; font-size: 12px; color: var(--sub); margin-left: 6px; }
+  .step p { margin: 5px 0 0; font-size: 13px; line-height: 1.45; }
+  .sql { margin: 6px 0 0; padding: 6px 10px; background: #F2F3F3; border-left: 3px solid var(--ath); border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; line-height: 1.4; }
+  .sql.pg { border-left-color: var(--pg); }
+  .out { margin-top: 6px; font-size: 12.5px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 11px; font-weight: 700; margin-right: 4px; vertical-align: 1px; }
+  .t-pg { background: var(--pg); } .t-go { background: var(--go); } .t-s3 { background: var(--s3); }
+  .t-ath { background: var(--ath); } .t-glue { background: var(--glue); } .t-man { background: var(--man); }
+  .sub { display: grid; grid-template-columns: 36px 1fr; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .sub .n { font-weight: 700; color: var(--ath); font-size: 14px; }
+  .fail { margin-top: 6px; font-size: 12.5px; color: #B0261B; }
+  .arrow { text-align: center; color: var(--sub); font-size: 18px; line-height: 1; margin: -4px 0 6px; }
+
+  /* right panel */
+  .panel { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: #fff; }
+  .panel h2 { margin: 0 0 8px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .tree { font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.55; white-space: pre; }
+  .tree .d { font-weight: 700; }
+  .tree .c { color: var(--sub); font-family: "Segoe UI", Arial, sans-serif; font-size: 12px; }
+  .b { display: inline-block; min-width: 22px; padding: 0 5px; border-radius: 9px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 700; text-align: center; font-family: "Segoe UI", Arial, sans-serif; }
+  .zone { border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+  .z-raw { background: #EAF4E4; } .z-cur { background: #E4F0F6; } .z-oth { background: #F4F4F4; }
+  .glue-row { border-left: 4px solid var(--glue); background: #FCEFF4; padding: 7px 10px; margin: 6px 0; border-radius: 4px; font-size: 13px; }
+  .glue-row.tmp { border-left-style: dashed; background: #fff; border: 1px dashed var(--glue); border-left: 4px dashed var(--glue); }
+  .who td { padding: 5px 6px; font-size: 13px; vertical-align: top; border-bottom: 1px solid var(--line); }
+  .who { border-collapse: collapse; width: 100%; }
+  .key { background: #FFF8E6; border-color: #EAC675; }
+  .key li { font-size: 13px; line-height: 1.5; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>How trip_events moves from Postgres into Iceberg (raw → curated)</h1>
+<p class="lead">Step by step through the Go code in <code>export/</code>. Environment shown: <b>Test</b> — bucket <code>mtsai-datalake-test-690293068614-ap-south-1</code>, Glue databases <code>test_raw</code> / <code>test_curated</code>, region ap-south-1. D = the event_date being processed (default: yesterday, UTC).</p>
+
+<div class="sched">
+  <div><b>One-time, by hand</b>Step 0: create both Iceberg tables in Athena</div>
+  <div><b>07:00 UTC nightly</b>cmd/export (ECS Fargate, EventBridge Scheduler) → steps 1–7</div>
+  <div><b>07:20 UTC nightly</b>cmd/curate (ECS Fargate) → steps 8–10</div>
+  <div><b>Sun 03:00 UTC weekly</b>cmd/compact → VACUUM both tables</div>
+</div>
+
+<div class="wrap">
+<!-- ================= LEFT: steps ================= -->
+<div>
+
+  <div class="phase p0">STEP 0 — Create the empty tables (once) <span>run by hand in the Athena console</span></div>
+  <div class="step"><div class="num">0</div><div>
+    <h3>Create raw + curated Iceberg tables <span class="file">sql/raw/trip_events.sql (not in repo yet) · sql/curated/trip_events_curated.sql</span></h3>
+    <div class="sql">CREATE TABLE test_raw.trip_events (7 cols) LOCATION 's3://…/raw/trip_events/' TBLPROPERTIES ('table_type'='ICEBERG')
+CREATE TABLE test_curated.trip_events_curated WITH (table_type='ICEBERG', location='s3://…/curated/trip_events/')
+  AS SELECT … FROM test_raw.trip_events WHERE 1 = 0      -- right schema, zero rows</div>
+    <p class="out"><span class="tag t-ath">Athena</span> writes the first <code>metadata/00000-*.metadata.json</code> (schema, no snapshots yet) for each table · <span class="tag t-glue">Glue</span> registers both tables, pointing at that metadata file. No data files exist yet.</p>
+  </div></div>
+
+  <div class="phase pa">cmd/export — Postgres → raw <span>export/cmd/export/main.go · runOnce(date)</span></div>
+
+  <div class="step"><div class="num">1</div><div>
+    <h3><span class="fn">config.LoadFromEnv()</span><span class="file">internal/config/config.go</span></h3>
+    <p>Reads env vars from the ECS task: <code>MTSAI_DATALAKE_BUCKET</code>, <code>_RAW_DATABASE</code>, <code>_WORKGROUP</code>, <code>POSTGRES_CREDENTIALS</code> (JSON injected from Secrets Manager), <code>tables.yaml</code>. Date = <code>EXPORT_DATE</code> or yesterday UTC; <code>EXPORT_START_DATE</code>/<code>END_DATE</code> switches to <b>runBackfill</b>, which calls runOnce once per date. Each run gets a fresh <code>runID = uuid</code>.</p>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div>
+    <h3><span class="fn">source.Connect()</span> + <span class="fn">source.StreamTripEvents(date, 1000)</span><span class="file">internal/source/postgres.go</span></h3>
+    <div class="sql pg">BEGIN;
+DECLARE export_cursor CURSOR FOR SELECT trip_id, vehicle_id_hash, city_code, event_date, distance_km, fare_amount, created_at
+  FROM trip_events WHERE event_date = $1 ORDER BY trip_id;
+FETCH FORWARD 1000 FROM export_cursor;   -- repeated until a batch comes back short
+COMMIT;</div>
+    <p class="out"><span class="tag t-pg">Postgres</span> pgx, <code>sslmode=prefer</code> → rows land in memory as <code>[]model.TripEvent</code>. main.go then computes <b>pgChecksum = Σ trip_id</b> for step 6.</p>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div>
+    <h3><span class="fn">parquetw.WriteTripEvents(tmpPath, rows)</span><span class="file">internal/parquetw/writer.go</span></h3>
+    <p>Writes a local file <code>/tmp/trip_events-*.parquet</code> with parquet-go. <code>event_date</code> is converted to <b>int32 days-since-epoch</b> (works around a parquet-go bug that corrupts <code>,date</code> time fields); <code>created_at</code> stays a timestamp. The temp file is deleted when runOnce returns.</p>
+    <p class="out"><span class="tag t-go">Go container</span> This is a <b>plain Parquet file</b>, not Iceberg.</p>
+  </div></div>
+
+  <div class="step"><div class="num">4</div><div>
+    <h3><span class="fn">lake.UploadFile()</span><span class="file">internal/lake/s3.go</span></h3>
+    <p>S3 <code>PutObject</code> → <code>s3://…/raw/_staging/trip_events/&lt;runID&gt;/data.parquet</code></p>
+    <p class="out"><span class="tag t-s3">S3</span> The one and only data file the Go code writes itself.</p>
+  </div></div>
+
+  <div class="step"><div class="num">5</div><div>
+    <h3><span class="fn">lake.CommitToIceberg()</span><span class="file">internal/lake/iceberg.go — four Athena statements</span></h3>
+    <p>Each statement goes through <span class="fn" style="font-family:Consolas">AthenaRunner.Run</span> (<code>internal/lake/athena.go</code>): <code>StartQueryExecution</code> in the pipeline workgroup with database <code>test_raw</code>, then polls <code>GetQueryExecution</code> every 1 s until SUCCEEDED/FAILED. Athena writes each query's result file to <code>athena-results/export/</code>.</p>
+
+    <div class="sub"><div class="n">5a</div><div>
+      <div class="sql">CREATE EXTERNAL TABLE trip_events_staging_&lt;runID&gt; (…) STORED AS PARQUET
+  LOCATION 's3://…/raw/_staging/trip_events/&lt;runID&gt;/'</div>
+      <p class="out"><span class="tag t-glue">Glue</span> a temporary <b>Hive</b> table entry pointing at the step-4 file, so Athena can SELECT from it. No data is copied.</p>
+    </div></div>
+
+    <div class="sub"><div class="n">5b</div><div>
+      <div class="sql">DELETE FROM trip_events WHERE event_date = DATE 'D'      -- idempotency: a re-run replaces, never duplicates</div>
+      <p class="out"><span class="tag t-ath">Athena</span> if D already had rows, it writes <b>delete files</b> + a new snapshot. On a first run there's nothing to delete.</p>
+    </div></div>
+
+    <div class="sub"><div class="n">5c</div><div>
+      <div class="sql">INSERT INTO trip_events SELECT * FROM trip_events_staging_&lt;runID&gt;</div>
+      <p class="out"><span class="tag t-ath">Athena</span> reads the staging Parquet and writes <b>new Parquet data files</b> into <code>raw/trip_events/data/</code>, then the Iceberg <b>manifests + manifest list + new metadata.json</b> into <code>raw/trip_events/metadata/</code>. <span class="tag t-glue">Glue</span> the table's <code>metadata_location</code> pointer is switched to the new metadata.json in one atomic step. <b>This switch is the commit.</b></p>
+    </div></div>
+
+    <div class="sub"><div class="n">5d</div><div>
+      <div class="sql">DROP TABLE IF EXISTS trip_events_staging_&lt;runID&gt;      -- deferred, runs even on failure</div>
+      <p class="out"><span class="tag t-glue">Glue</span> temporary entry removed. The staging Parquet <b>stays in S3</b> (no lifecycle rule for it yet).</p>
+    </div></div>
+    <p class="fail">✖ Any 5a–5c error → failure manifest (<code>success:false</code>) uploaded, job exits non-zero.</p>
+  </div></div>
+
+  <div class="step"><div class="num">6</div><div>
+    <h3><span class="fn">runner.RunAndFetchSingleValue()</span> ×2 + <span class="fn">reconcile.Result.Match()</span><span class="file">cmd/export/main.go · internal/reconcile</span></h3>
+    <div class="sql">SELECT COUNT(*)                 FROM trip_events WHERE event_date = DATE 'D'
+SELECT COALESCE(SUM(trip_id), 0) FROM trip_events WHERE event_date = DATE 'D'</div>
+    <p class="out">Pass only if <b>Postgres count = lake count</b> and <b>pgChecksum = lake SUM(trip_id)</b>.</p>
+  </div></div>
+
+  <div class="step"><div class="num">7</div><div>
+    <h3><span class="fn">manifest.Upload()</span><span class="file">internal/manifest/manifest.go</span></h3>
+    <p><code>export-manifests/D/trip_events.json</code> → <code>{table, run_date, run_id, row_count, checksum, duration_seconds, generated_at, success, error}</code></p>
+    <p class="out"><span class="tag t-man">Manifest</span> This is the evidence cmd/trim checks before dropping a Postgres partition. A mismatch writes <code>success:false</code> and the job exits non-zero.</p>
+  </div></div>
+
+  <div class="phase pb">cmd/curate — raw → curated <span>export/cmd/curate/main.go · no Postgres, no Go-written Parquet</span></div>
+
+  <div class="step"><div class="num">8</div><div>
+    <h3><span class="fn">loadConfig()</span> + <span class="fn">countAndChecksum(test_raw.trip_events)</span></h3>
+    <p>Date = <code>CURATE_DATE</code> or yesterday UTC. AthenaRunner uses database <code>test_curated</code>. First counts raw for D (COUNT + SUM(trip_id)). Raw is the source of truth here.</p>
+  </div></div>
+
+  <div class="step"><div class="num">9</div><div>
+    <h3><span class="fn">commitToCurated()</span><span class="file">same DELETE + INSERT pattern, no staging table</span></h3>
+    <div class="sql">DELETE FROM trip_events_curated WHERE event_date = DATE 'D'
+INSERT INTO trip_events_curated
+  SELECT trip_id, vehicle_id_hash, city_code, event_date, distance_km, fare_amount, created_at
+  FROM test_raw.trip_events WHERE event_date = DATE 'D'</div>
+    <p class="out"><span class="tag t-ath">Athena</span> reads raw's Iceberg data files and writes new data files + metadata under <code>curated/trip_events/</code>. <span class="tag t-glue">Glue</span> switches <code>test_curated.trip_events_curated</code> to the new metadata.json. v1 is a straight copy (no cleaning yet).</p>
+  </div></div>
+
+  <div class="step"><div class="num">10</div><div>
+    <h3><span class="fn">countAndChecksum(curated)</span> → <span class="fn">reconcile</span> → <span class="fn">manifest.Upload()</span></h3>
+    <p>Raw count/sum must equal curated count/sum → <code>export-manifests/D/trip_events_curated.json</code>. Mismatch → <code>success:false</code>, non-zero exit.</p>
+  </div></div>
+
+  <div class="phase pc">Maintenance jobs that touch the same files <span>same Docker image, separate ECS task definitions</span></div>
+  <div class="step"><div class="num">11</div><div>
+    <p style="margin:0"><b>cmd/compact</b> (Sun 03:00 UTC): <code>VACUUM trip_events</code>, <code>VACUUM trip_events_curated</code> → expires old snapshots and <b>physically deletes</b> data/metadata files no snapshot references anymore. Also publishes S3 size-per-prefix to CloudWatch.<br>
+    <b>cmd/trim</b>: drops old Postgres daily partitions only when <code>export-manifests/D/trip_events.json</code> exists and says <code>success:true</code>.<br>
+    <b>cmd/erasure</b>: <code>DELETE … WHERE vehicle_id_hash = ?</code> on both tables, then VACUUM, so older snapshots can't bring the data back.</p>
+  </div></div>
+
+</div>
+
+<!-- ================= RIGHT: storage ================= -->
+<div>
+
+  <div class="panel">
+    <h2><span class="tag t-s3" style="font-size:12px">S3</span> Bucket layout — what each step creates</h2>
+    <div class="tree"><span class="d">s3://mtsai-datalake-test-690293068614-ap-south-1/</span></div>
+
+    <div class="zone z-raw"><div class="tree"><span class="d">raw/</span>
+├── <span class="d">_staging/trip_events/&lt;runID&gt;/</span>
+│   └── data.parquet               <span class="b">4</span>  <span class="c">Go-written, plain Parquet</span>
+│                                      <span class="c">read by 5c, then left behind</span>
+└── <span class="d">trip_events/</span>                   <span class="b">0</span>  <span class="c">← Iceberg table root</span>
+    ├── <span class="d">data/</span>
+    │   ├── …/*.parquet            <span class="b">5c</span> <span class="c">row data (Athena-written)</span>
+    │   └── …/*delete*.parquet     <span class="b">5b</span> <span class="c">"row N of file X is gone"</span>
+    └── <span class="d">metadata/</span>
+        ├── 00000-*.metadata.json  <span class="b">0</span>  <span class="c">schema only, no snapshot</span>
+        ├── 0000N-*.metadata.json  <span class="b">5b</span><span class="b">5c</span> <span class="c">one per commit</span>
+        ├── snap-*.avro            <span class="b">5c</span> <span class="c">manifest list (= snapshot)</span>
+        └── *-m0.avro              <span class="b">5c</span> <span class="c">manifest: list of data files</span></div></div>
+
+    <div class="zone z-cur"><div class="tree"><span class="d">curated/</span>
+└── <span class="d">trip_events/</span>                   <span class="b">0</span>  <span class="c">← Iceberg table root (CTAS)</span>
+    ├── <span class="d">data/</span>…/*.parquet             <span class="b">9</span>  <span class="c">copied from raw by Athena</span>
+    └── <span class="d">metadata/</span>*.json, *.avro        <span class="b">0</span><span class="b">9</span></div></div>
+
+    <div class="zone z-oth"><div class="tree"><span class="d">athena-results/export/</span>
+└── &lt;query-id&gt;.csv / .metadata     <span class="b">5</span><span class="b">6</span><span class="b">8</span><span class="b">9</span><span class="b">10</span> <span class="c">every query's output;</span>
+                                              <span class="c">expired by lifecycle rule</span>
+<span class="d">export-manifests/</span>
+├── &lt;D&gt;/trip_events.json             <span class="b">7</span>
+├── &lt;D&gt;/trip_events_curated.json     <span class="b">10</span>
+├── backfill/&lt;start&gt;_&lt;end&gt;/summary.json  <span class="c">runBackfill</span>
+├── trim/&lt;D&gt;/summary.json               <span class="c">cmd/trim</span>
+└── erasure/&lt;D&gt;/&lt;request-ref&gt;.json      <span class="c">cmd/erasure</span></div></div>
+    <p style="font-size:12px;color:var(--sub);margin:6px 0 0">Sub-folders under <code>data/</code> are chosen by Athena (hashed/partition prefixes), so exact names vary. Files are never edited in place: every change adds new files, and VACUUM removes old ones.</p>
+  </div>
+
+  <div class="panel">
+    <h2><span class="tag t-glue" style="font-size:12px">Glue</span> Data Catalog — pointers, not data</h2>
+    <div style="font-size:13px;font-weight:700;margin-top:4px">test_raw</div>
+    <div class="glue-row"><b>trip_events</b> · table_type = ICEBERG · created in step 0<br>
+      <code>metadata_location</code> → <code>raw/trip_events/metadata/&lt;latest&gt;.metadata.json</code><br>
+      <span style="color:var(--sub)">switched on every commit (5b, 5c). Readers always follow this pointer.</span></div>
+    <div class="glue-row tmp"><b>trip_events_staging_&lt;runID&gt;</b> · EXTERNAL (Hive) · exists only from 5a to 5d<br>
+      LOCATION → <code>raw/_staging/trip_events/&lt;runID&gt;/</code></div>
+    <div style="font-size:13px;font-weight:700;margin-top:10px">test_curated</div>
+    <div class="glue-row"><b>trip_events_curated</b> · table_type = ICEBERG · created in step 0 (CTAS)<br>
+      <code>metadata_location</code> → <code>curated/trip_events/metadata/&lt;latest&gt;.metadata.json</code></div>
+  </div>
+
+  <div class="panel">
+    <h2>Who writes what</h2>
+    <table class="who">
+      <tr><td><span class="tag t-go">Go code</span></td><td>Only the staging <code>data.parquet</code> (step 4) and the manifest JSONs (7, 10). It never writes Iceberg files; it only sends SQL to Athena.</td></tr>
+      <tr><td><span class="tag t-ath">Athena</span></td><td>The engine. Writes every Iceberg data file, delete file, manifest and metadata.json, plus query results.</td></tr>
+      <tr><td><span class="tag t-glue">Glue</span></td><td>The catalog. Holds each table's name → current metadata.json pointer.</td></tr>
+      <tr><td><b>Iceberg</b></td><td>Not a service, a <b>format</b>: the rules Athena follows for data/ + metadata/ and snapshots.</td></tr>
+    </table>
+  </div>
+
+  <div class="panel key">
+    <h2>Key ideas</h2>
+    <ul style="margin:0;padding-left:18px">
+      <li><b>Parquet files are immutable.</b> DELETE and INSERT add new files plus a new snapshot. Nothing is edited in place.</li>
+      <li><b>A commit = Glue's pointer moving</b> to a new metadata.json. Until 5c's pointer swap, readers still see the old table.</li>
+      <li><b>Idempotent by date:</b> DELETE for D, then INSERT for D. Re-running a date replaces its rows instead of duplicating them.</li>
+      <li><b>Every hop is checked:</b> Postgres ↔ raw (step 6) and raw ↔ curated (step 10), both by row count + SUM(trip_id).</li>
+      <li><b>Never touch <code>data/</code> or <code>metadata/</code> by hand.</b> Always change the table through SQL in Athena.</li>
+    </ul>
+  </div>
+
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/video/MTSAi-Data-Lake-Pipeline.mp4.
+  A deterministic animation: window.render(t) draws the frame at t seconds, so it can be captured
+  frame by frame (docs/video/render_video.py). Open in a browser to watch it live (autoplays).
+  Numbers are from the real Test run for 2026-07-07 (docs/STATUS.md): 76 rows, checksum 177962.
+  Sample row values are illustrative.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MTSAi Data Lake Pipeline</title>
+<style>
+  html, body { margin: 0; background: #0F1722; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0F1722; font-family: "Segoe UI", Arial, sans-serif; color: #E8EDF3; }
+  .abs { position: absolute; }
+  /* header */
+  #hdr { left: 0; top: 0; width: 1920px; height: 74px; background: #16202E; border-bottom: 1px solid #263345; }
+  #title { left: 36px; top: 16px; font-size: 28px; font-weight: 700; }
+  #title span { color: #7FB2FF; }
+  #clock { right: 36px; top: 12px; text-align: right; }
+  #clock .t { font-family: Consolas, monospace; font-size: 30px; font-weight: 700; color: #FFD166; }
+  #clock .d { font-size: 13px; color: #9AA8BA; }
+  #prog { left: 0; top: 72px; height: 3px; background: #4F8CFF; }
+
+  /* infra boxes */
+  .box { position: absolute; border-radius: 14px; border: 2px solid; background: #16202E; box-sizing: border-box; padding: 12px 14px; transition: none; }
+  .box .n { font-size: 19px; font-weight: 700; }
+  .box .s { font-size: 13px; color: #9AA8BA; margin-top: 3px; line-height: 1.35; }
+  .box .m { font-family: Consolas, monospace; font-size: 12.5px; color: #C9D4E2; }
+  #b-glue .m { font-size: 11.5px; line-height: 1.5; }
+  .log { position: absolute; background: #0A0F16; border: 1px solid #2A3A50; border-radius: 6px; padding: 6px 8px; box-sizing: border-box; font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; color: #9FE6A0; overflow: hidden; }
+  .log div { white-space: normal; word-break: break-all; }
+  .log .hd { color: #6C7D93; }
+  .glow { box-shadow: 0 0 0 4px rgba(255,209,102,.55), 0 0 28px rgba(255,209,102,.45); }
+  .c-sched { border-color: #E7157B; } .c-sched .n { color: #FF6FB0; }
+  .c-sec   { border-color: #DD344C; } .c-sec .n { color: #FF7A8A; }
+  .c-pg    { border-color: #4B7BEC; } .c-pg .n { color: #8DB0FF; }
+  .c-ecs   { border-color: #ED7100; } .c-ecs .n { color: #FFA24D; }
+  .c-ath   { border-color: #8C4FFF; } .c-ath .n { color: #B794FF; }
+  .c-glue  { border-color: #D6246E; } .c-glue .n { color: #FF6FA5; }
+  .c-s3    { border-color: #3F8624; } .c-s3 .n { color: #7BD35A; }
+  .c-cw    { border-color: #6B7C93; } .c-cw .n { color: #B7C4D6; }
+
+  .container { position: absolute; border: 2px dashed #FFA24D; border-radius: 10px; background: #1D2A3B; padding: 10px 12px; box-sizing: border-box; }
+  .container .n { font-size: 16px; font-weight: 700; color: #FFD0A0; }
+  .container .m { font-family: Consolas, monospace; font-size: 12.5px; color: #C9D4E2; }
+
+  .folder { position: absolute; font-family: Consolas, monospace; font-size: 14px; color: #CFE8C3; padding: 5px 9px; border-radius: 6px; background: #1C2A1F; border: 1px solid #2E4A2A; box-sizing: border-box; white-space: nowrap; }
+  .folder.hot { background: #2F4A22; border-color: #7BD35A; color: #fff; }
+  .file { position: absolute; font-family: Consolas, monospace; font-size: 12px; padding: 3px 8px; border-radius: 5px; white-space: nowrap; box-sizing: border-box; }
+  .f-pq { background: #214A2A; border: 1px solid #5FBF6A; color: #D8F5DA; }
+  .f-meta { background: #3A2440; border: 1px solid #C27BD9; color: #F2DDF8; }
+  .f-json { background: #4A3A14; border: 1px solid #E0B34A; color: #FFF0C8; }
+  .f-tmp { background: #3A3A3A; border: 1px dashed #A0A0A0; color: #DDD; }
+
+  .dot { position: absolute; width: 14px; height: 14px; border-radius: 50%; margin: -7px 0 0 -7px; }
+  .pkt { position: absolute; font-family: Consolas, monospace; font-size: 12px; padding: 3px 8px; border-radius: 12px; white-space: nowrap; transform: translate(-50%,-50%); font-weight: 700; }
+
+  /* right panel */
+  #panel { left: 1300px; top: 96px; width: 590px; height: 850px; border-radius: 14px; background: #121B27; border: 1px solid #263345; box-sizing: border-box; }
+  .pane { position: absolute; left: 0; top: 0; width: 590px; padding: 22px 24px; box-sizing: border-box; }
+  .pane h2 { margin: 0 0 4px; font-size: 22px; color: #fff; }
+  .pane .fn { font-family: Consolas, monospace; font-size: 15px; color: #6FD3F0; }
+  .pane .file { position: static; display: inline-block; margin-top: 4px; font-size: 12.5px; color: #9AA8BA; padding: 0; }
+  .code { margin-top: 14px; background: #0B1119; border: 1px solid #243244; border-radius: 10px; padding: 12px 14px; font-family: Consolas, monospace; font-size: 14px; line-height: 1.55; white-space: pre; color: #D6DEE9; }
+  .kw { color: #FF7AB6; } .str { color: #9BE38F; } .cm { color: #6C7D93; } .num { color: #FFD166; } .id { color: #7FC8FF; }
+  .note { margin-top: 14px; font-size: 16px; line-height: 1.5; color: #D6DEE9; }
+  .note b { color: #FFD166; }
+  table.rows { margin-top: 12px; border-collapse: collapse; font-family: Consolas, monospace; font-size: 12.5px; width: 100%; }
+  table.rows th { text-align: left; color: #9AA8BA; font-weight: 400; border-bottom: 1px solid #2A3A50; padding: 4px 5px; }
+  table.rows td { padding: 4px 5px; border-bottom: 1px solid #1C2838; color: #E0E7F0; }
+  .big { font-size: 44px; font-weight: 800; font-family: Consolas, monospace; color: #FFD166; }
+  .ok { color: #5BE37D; font-weight: 800; }
+  .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .kv > div { background: #0B1119; border: 1px solid #243244; border-radius: 10px; padding: 10px 12px; }
+  .kv .l { font-size: 12.5px; color: #9AA8BA; } .kv .v { font-family: Consolas, monospace; font-size: 22px; font-weight: 700; margin-top: 2px; }
+
+  /* caption */
+  #cap { left: 36px; top: 972px; width: 1848px; height: 88px; border-radius: 14px; background: #16202E; border: 1px solid #263345; box-sizing: border-box; padding: 0 26px; display: flex; align-items: center; gap: 20px; }
+  #capn { flex: none; min-width: 64px; height: 56px; border-radius: 28px; background: #4F8CFF; color: #fff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 14px; box-sizing: border-box; }
+  #capt { font-size: 24px; line-height: 1.3; }
+  #capt b { color: #FFD166; }
+
+  /* full-screen cards */
+  .card { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #0F1722; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .card h1 { font-size: 64px; margin: 0; }
+  .card h1 span { color: #7FB2FF; }
+  .card p { font-size: 26px; color: #B8C4D4; margin: 18px 0 0; max-width: 1400px; line-height: 1.45; }
+  .card .chips { display: flex; gap: 16px; margin-top: 40px; }
+  .card .chip { padding: 12px 22px; border-radius: 30px; font-size: 20px; font-weight: 700; }
+  .sumgrid { display: grid; grid-template-columns: repeat(3, 440px); gap: 22px; margin-top: 44px; text-align: left; }
+  .sumgrid div { background: #16202E; border: 1px solid #263345; border-radius: 14px; padding: 18px 22px; font-size: 19px; line-height: 1.45; color: #D6DEE9; }
+  .sumgrid b { display: block; font-size: 22px; color: #fff; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ================= HEADER ================= -->
+  <div id="hdr" class="abs"></div>
+  <div id="title" class="abs">MTSAi Data Lake: <span>one night of trip_events</span></div>
+  <div id="clock" class="abs"><div class="t" id="clk">06:59:58 UTC</div><div class="d" id="clkd">Test account 690293068614 · ap-south-1 · processing event_date 2026-07-07</div></div>
+  <div id="prog" class="abs"></div>
+
+  <!-- ================= INFRA MAP ================= -->
+  <div id="b-sched" class="box c-sched" style="left:40px;top:110px;width:250px;height:100px">
+    <div class="n">EventBridge Scheduler</div><div class="s">cron 07:00 export<br>cron 07:20 curate · Sun 03:00 compact</div></div>
+  <div id="b-sec" class="box c-sec" style="left:40px;top:260px;width:250px;height:100px">
+    <div class="n">Secrets Manager</div><div class="m">mtsai-api-sim-test-credentials</div></div>
+  <div id="b-pg" class="box c-pg" style="left:40px;top:420px;width:250px;height:190px">
+    <div class="n">RDS Postgres</div><div class="m">mtsai-api-sim-test</div><div class="s">table trip_events<br>5,000 rows · partitioned by day</div>
+    <svg width="70" height="62" style="position:absolute;right:14px;bottom:12px"><ellipse cx="35" cy="10" rx="30" ry="9" fill="#243B6B" stroke="#8DB0FF" stroke-width="2"/><path d="M5,10 V50 A30,9 0 0 0 65,50 V10" fill="#1B2E55" stroke="#8DB0FF" stroke-width="2"/><ellipse cx="35" cy="30" rx="30" ry="9" fill="none" stroke="#8DB0FF" stroke-width="1" opacity=".5"/></svg></div>
+
+  <div id="b-ecs" class="box c-ecs" style="left:350px;top:110px;width:400px;height:560px">
+    <div class="n">ECS Fargate</div><div class="m">cluster mtsai-datalake-test</div></div>
+  <div id="k-export" class="container" style="left:372px;top:185px;width:356px;height:250px">
+    <div class="n">task: /export</div><div class="m">Go binary · ARM64 · runID 6f1c…</div>
+    <div class="log" style="left:12px;top:48px;width:328px;height:150px"><div class="hd">$ /export   (CloudWatch log)</div>
+      <div id="le1">loaded config: 1 table(s) defined, exporting date 2026-07-07</div>
+      <div id="le2">run 6f1c…: table=trip_events date=2026-07-07 raw_db=test_raw</div>
+      <div id="le3">read 76 row(s) from postgres for 2026-07-07</div>
+      <div id="le4">uploaded 76 row(s) to s3://…/raw/_staging/trip_events/6f1c…/data.parquet</div>
+      <div id="le5" style="color:#FFD166">run 6f1c… succeeded: 76 row(s), checksum=177962, duration=11.01s</div></div></div>
+  <div id="k-curate" class="container" style="left:372px;top:455px;width:356px;height:190px">
+    <div class="n">task: /curate</div><div class="m">starts 07:20 · no Postgres access needed</div>
+    <div class="log" style="left:12px;top:48px;width:328px;height:124px"><div class="hd">$ /curate   (CloudWatch log)</div>
+      <div id="lc1">run 9a3e…: table=trip_events_curated date=2026-07-07 raw_db=test_raw curated_db=test_curated</div>
+      <div id="lc2">raw has 76 row(s) for 2026-07-07</div>
+      <div id="lc3" style="color:#FFD166">run 9a3e… succeeded: 76 row(s), checksum=177962</div></div></div>
+
+  <div id="b-cw" class="box c-cw" style="left:40px;top:680px;width:250px;height:86px">
+    <div class="n">CloudWatch + SNS</div><div class="s">logs · task-failed alarm → email</div></div>
+
+  <div id="b-ath" class="box c-ath" style="left:800px;top:104px;width:210px;height:132px">
+    <div class="n">Athena</div><div class="s">SQL engine<br>workgroup …-pipeline</div></div>
+  <div id="b-glue" class="box c-glue" style="left:1030px;top:104px;width:240px;height:132px">
+    <div class="n">Glue Catalog</div><div class="m" id="glue-raw">test_raw.trip_events → 00001</div><div class="m" id="glue-stg" style="color:#FFB0CC">+ trip_events_staging_6f1c…</div><div class="m" id="glue-cur">test_curated.…_curated → 00004</div></div>
+
+  <div id="b-s3" class="box c-s3" style="left:800px;top:250px;width:470px;height:700px">
+    <div class="n">S3 bucket</div><div class="m">mtsai-datalake-test-690293068614-ap-south-1</div></div>
+  <div id="fd-stg"  class="folder" style="left:820px;top:318px;width:430px">raw/_staging/trip_events/</div>
+  <div id="fd-raw"  class="folder" style="left:820px;top:404px;width:430px">raw/trip_events/   (Iceberg table)</div>
+  <div id="fd-rawd" class="folder" style="left:844px;top:440px;width:406px">data/</div>
+  <div id="fd-rawm" class="folder" style="left:844px;top:520px;width:406px">metadata/</div>
+  <div id="fd-cur"  class="folder" style="left:820px;top:610px;width:430px">curated/trip_events/   (Iceberg table)</div>
+  <div id="fd-curd" class="folder" style="left:844px;top:646px;width:406px">data/</div>
+  <div id="fd-curm" class="folder" style="left:844px;top:716px;width:406px">metadata/</div>
+  <div id="fd-man"  class="folder" style="left:820px;top:800px;width:430px">export-manifests/2026-07-07/</div>
+  <div id="fd-ares" class="folder" style="left:820px;top:896px;width:430px">athena-results/export/</div>
+
+  <!-- files that appear -->
+  <div id="f-tmp"   class="file f-tmp" style="left:388px;top:404px">/tmp/trip_events-….parquet</div>
+  <div id="f-stg"   class="file f-pq"  style="left:844px;top:354px">6f1c…/data.parquet  (76 rows)</div>
+  <div id="f-rawd"  class="file f-pq"  style="left:900px;top:474px">+ 00003-….parquet  (event_date=2026-07-07)</div>
+  <div id="f-rawm"  class="file f-meta" style="left:900px;top:554px">+ 00002-….metadata.json  ★ live</div>
+  <div id="f-curd"  class="file f-pq"  style="left:900px;top:680px">+ 00007-….parquet</div>
+  <div id="f-curm"  class="file f-meta" style="left:900px;top:750px">+ 00005-….metadata.json  ★ live</div>
+  <div id="f-man1"  class="file f-json" style="left:844px;top:836px">trip_events.json  success:true</div>
+  <div id="f-man2"  class="file f-json" style="left:844px;top:862px">trip_events_curated.json  success:true</div>
+  <div id="f-ares"  class="file f-tmp"  style="left:1000px;top:926px">query results .csv</div>
+
+  <!-- moving packets (positioned by JS) -->
+  <div id="p1" class="pkt" style="background:#FF6FB0;color:#2B0016">run!</div>
+  <div id="p2" class="pkt" style="background:#FF7A8A;color:#2B0008">POSTGRES_CREDENTIALS</div>
+  <div id="p3" class="pkt" style="background:#8DB0FF;color:#0B1A3A">1000-row batch</div>
+  <div id="p4" class="pkt" style="background:#5FBF6A;color:#06200B">data.parquet</div>
+  <div id="p5" class="pkt" style="background:#B794FF;color:#1A0B3A">SQL</div>
+  <div id="p6" class="pkt" style="background:#FF6FA5;color:#2B0016">swap pointer</div>
+  <div id="p7" class="pkt" style="background:#5FBF6A;color:#06200B">rows</div>
+  <div id="p8" class="pkt" style="background:#E0B34A;color:#2B2000">manifest</div>
+  <div id="p9" class="pkt" style="background:#B794FF;color:#1A0B3A">COUNT / SUM</div>
+
+  <!-- ================= RIGHT PANEL ================= -->
+  <div id="panel" class="abs">
+    <div id="pn-infra" class="pane">
+      <h2>The infrastructure</h2>
+      <div class="note">Everything runs in the <b>Test</b> AWS account and is built by Terraform (<span class="fn">terraform/envs/test</span>).</div>
+      <div class="note">• <b>EventBridge Scheduler</b> starts jobs on a timer<br>• <b>ECS Fargate</b> runs our Go code in containers<br>• <b>RDS Postgres</b> is the source database<br>• <b>Secrets Manager</b> holds its password<br>• <b>S3</b> stores every lake file<br>• <b>Glue</b> knows where each table lives<br>• <b>Athena</b> runs SQL over the files<br>• <b>CloudWatch + SNS</b> log everything and email on failure</div>
+    </div>
+
+    <div id="pn-trigger" class="pane">
+      <h2>07:00 UTC: the schedule fires</h2>
+      <div class="fn">terraform/modules/export-task</div>
+      <div class="code"><span class="id">schedule_expression</span> = <span class="str">"cron(0 7 * * ? *)"</span>
+<span class="cm"># 07:00 UTC = 12:30 IST</span>
+<span class="id">launch_type</span>        = <span class="str">"FARGATE"</span>
+<span class="id">task_definition</span>    = <span class="str">"…-export"</span></div>
+      <div class="note">No server is running beforehand. Fargate starts a fresh container just for this run and stops it when the job finishes.</div>
+    </div>
+
+    <div id="pn-config" class="pane">
+      <h2>Step 1: load config</h2>
+      <div class="fn">config.LoadFromEnv()</div><div class="file">export/internal/config/config.go</div>
+      <div class="code"><span class="id">MTSAI_DATALAKE_BUCKET</span>=<span class="str">mtsai-datalake-test-…</span>
+<span class="id">MTSAI_DATALAKE_RAW_DATABASE</span>=<span class="str">test_raw</span>
+<span class="id">MTSAI_DATALAKE_WORKGROUP</span>=<span class="str">…-pipeline</span>
+<span class="id">POSTGRES_CREDENTIALS</span>=<span class="str">{"host":…,"port":5432,
+  "dbname":…,"username":…,"password":"••••"}</span>
+<span class="cm">// date = EXPORT_DATE or yesterday (UTC)</span>
+<span class="id">runID</span> := uuid.NewString()</div>
+      <div class="note">ECS copies the secret from <b>Secrets Manager</b> into the container as an environment variable. The code never stores the password anywhere.</div>
+    </div>
+
+    <div id="pn-read" class="pane">
+      <h2>Step 2: stream rows from Postgres</h2>
+      <div class="fn">source.StreamTripEvents(date, 1000)</div><div class="file">export/internal/source/postgres.go</div>
+      <div class="code"><span class="kw">DECLARE</span> export_cursor <span class="kw">CURSOR FOR</span>
+  <span class="kw">SELECT</span> trip_id, vehicle_id_hash, city_code, …
+  <span class="kw">FROM</span> trip_events
+  <span class="kw">WHERE</span> event_date = <span class="str">'2026-07-07'</span>
+  <span class="kw">ORDER BY</span> trip_id;
+<span class="kw">FETCH FORWARD</span> <span class="num">1000</span> <span class="kw">FROM</span> export_cursor;</div>
+      <table class="rows">
+        <tr><th>trip_id</th><th>vehicle_id_hash</th><th>city</th><th>km</th><th>fare</th></tr>
+        <tr><td>2291</td><td>9f2c…e41a</td><td>BLR</td><td>7.4</td><td>142.0</td></tr>
+        <tr><td>2297</td><td>0b7d…93fc</td><td>MUM</td><td>12.1</td><td>231.5</td></tr>
+        <tr><td>2304</td><td>c51e…0a77</td><td>DEL</td><td>3.9</td><td>88.0</td></tr>
+        <tr><td>2310</td><td>7ae0…d2b3</td><td>HYD</td><td>21.6</td><td>402.0</td></tr>
+        <tr><td colspan="5" style="color:#9AA8BA">… sample rows (illustrative values)</td></tr>
+      </table>
+      <div class="kv"><div><div class="l">rows read</div><div class="v" id="rowsread">0</div></div><div><div class="l">pgChecksum = Σ trip_id</div><div class="v" id="pgsum">0</div></div></div>
+    </div>
+
+    <div id="pn-parquet" class="pane">
+      <h2>Steps 3–4: Parquet file → S3</h2>
+      <div class="fn">parquetw.WriteTripEvents()</div><div class="file">export/internal/parquetw/writer.go</div>
+      <div class="fn" style="margin-top:8px">lake.UploadFile()</div><div class="file">export/internal/lake/s3.go</div>
+      <div class="code"><span class="cm">// rows → columns, written to local disk</span>
+/tmp/trip_events-….parquet
+  trip_id <span class="num">int64</span> · city_code <span class="num">string</span>
+  event_date <span class="num">int32</span> <span class="cm">(days since 1970)</span>
+  created_at <span class="num">timestamp</span>
+
+<span class="cm">// then S3 PutObject →</span>
+raw/_staging/trip_events/6f1c…/data.parquet</div>
+      <div class="note">This is a <b>plain Parquet file</b>, not Iceberg yet. It's the only data file our Go code writes itself.</div>
+    </div>
+
+    <div id="pn-commit" class="pane">
+      <h2>Step 5: commit into Iceberg</h2>
+      <div class="fn">lake.CommitToIceberg()</div><div class="file">export/internal/lake/iceberg.go · four SQL statements via Athena</div>
+      <div class="code" id="commitcode"><span id="c5a"><span class="num">5a</span> <span class="kw">CREATE EXTERNAL TABLE</span> …_staging_6f1c…
+   <span class="kw">LOCATION</span> <span class="str">'s3://…/raw/_staging/…/6f1c…/'</span></span>
+<span id="c5b"><span class="num">5b</span> <span class="kw">DELETE FROM</span> trip_events
+   <span class="kw">WHERE</span> event_date = <span class="kw">DATE</span> <span class="str">'2026-07-07'</span></span>
+<span id="c5c"><span class="num">5c</span> <span class="kw">INSERT INTO</span> trip_events
+   <span class="kw">SELECT</span> * <span class="kw">FROM</span> …_staging_6f1c…</span>
+<span id="c5d"><span class="num">5d</span> <span class="kw">DROP TABLE</span> …_staging_6f1c…</span></div>
+      <div class="note" id="commitnote">Athena does the real work: it writes new Iceberg data + metadata files, then Glue's pointer moves to the new version. <b>That pointer move is the commit.</b></div>
+    </div>
+
+    <div id="pn-recon" class="pane">
+      <h2>Steps 6–7: check, then record</h2>
+      <div class="fn">reconcile.Result.Match()</div><div class="file">export/internal/reconcile · internal/manifest</div>
+      <div class="kv">
+        <div><div class="l">Postgres rows</div><div class="v">76</div></div><div><div class="l">Lake rows (Athena COUNT)</div><div class="v">76 <span class="ok">✓</span></div></div>
+        <div><div class="l">Postgres Σ trip_id</div><div class="v">177962</div></div><div><div class="l">Lake SUM(trip_id)</div><div class="v">177962 <span class="ok">✓</span></div></div>
+      </div>
+      <div class="code">export-manifests/2026-07-07/trip_events.json
+{ <span class="str">"table"</span>: <span class="str">"trip_events"</span>,
+  <span class="str">"row_count"</span>: <span class="num">76</span>, <span class="str">"checksum"</span>: <span class="num">177962</span>,
+  <span class="str">"duration_seconds"</span>: <span class="num">11.01</span>,
+  <span class="str">"success"</span>: <span class="kw">true</span> }</div>
+      <div class="note">If the numbers didn't match, the manifest would say <b>success:false</b>, the task would exit with an error, and SNS would send an alert email.</div>
+    </div>
+
+    <div id="pn-curate" class="pane">
+      <h2>07:20 UTC: raw → curated</h2>
+      <div class="fn">commitToCurated()</div><div class="file">export/cmd/curate/main.go</div>
+      <div class="code"><span class="kw">DELETE FROM</span> trip_events_curated
+  <span class="kw">WHERE</span> event_date = <span class="kw">DATE</span> <span class="str">'2026-07-07'</span>;
+<span class="kw">INSERT INTO</span> trip_events_curated
+  <span class="kw">SELECT</span> trip_id, vehicle_id_hash, …
+  <span class="kw">FROM</span> test_raw.trip_events
+  <span class="kw">WHERE</span> event_date = <span class="kw">DATE</span> <span class="str">'2026-07-07'</span>;</div>
+      <div class="kv"><div><div class="l">raw rows / Σ</div><div class="v">76 / 177962</div></div><div><div class="l">curated rows / Σ</div><div class="v">76 / 177962 <span class="ok">✓</span></div></div></div>
+      <div class="note">No Postgres and no Go-written file this time. Athena copies from one Iceberg table to the other, and the job checks the counts again.</div>
+    </div>
+
+    <div id="pn-maint" class="pane">
+      <h2>Weekly and daily housekeeping</h2>
+      <div class="note"><b>cmd/compact</b>, Sunday 03:00 UTC<br><span class="fn">VACUUM trip_events · VACUUM trip_events_curated</span><br>Removes old versions and deletes files nothing uses anymore.</div>
+      <div class="note"><b>cmd/trim</b><br>Drops old Postgres day-partitions, but <b>only</b> if that day's manifest exists and says success:true. The lake copy is proven before the source copy is removed.</div>
+      <div class="note"><b>cmd/erasure</b><br>Deletes one vehicle's rows from both tables, then VACUUMs, so no old version can bring them back.</div>
+    </div>
+  </div>
+
+  <!-- ================= CAPTION ================= -->
+  <div id="cap" class="abs"><div id="capn">0</div><div id="capt"></div></div>
+
+  <!-- ================= CARDS ================= -->
+  <div id="card-intro" class="card">
+    <h1>MTSAi Data Lake: <span>how one night runs</span></h1>
+    <p>Follow 76 trip records from Postgres, through Go code running on ECS, into Iceberg tables on S3, checked at every step.</p>
+    <div class="chips">
+      <div class="chip" style="background:#1B2E55;color:#8DB0FF">RDS Postgres</div>
+      <div class="chip" style="background:#3A2410;color:#FFA24D">ECS Fargate (Go)</div>
+      <div class="chip" style="background:#2A1A4A;color:#B794FF">Athena</div>
+      <div class="chip" style="background:#3A1024;color:#FF6FA5">Glue</div>
+      <div class="chip" style="background:#1C3A14;color:#7BD35A">S3 + Iceberg</div>
+    </div>
+  </div>
+  <div id="card-end" class="card">
+    <h1>That's the whole night</h1>
+    <div class="sumgrid">
+      <div><b>07:00 · export</b>Postgres → Parquet → S3 staging → Athena commits into <span style="color:#7BD35A">raw</span> Iceberg → counts checked → manifest written.</div>
+      <div><b>07:20 · curate</b>Athena copies the day from <span style="color:#7BD35A">raw</span> to <span style="color:#7FC8FF">curated</span> → counts checked again → second manifest.</div>
+      <div><b>Safety</b>Re-runs replace, never duplicate. Data goes live only when Glue's pointer moves. Any mismatch fails the run and sends an email.</div>
+    </div>
+    <p style="font-size:20px;margin-top:40px">Real Test-run numbers for 2026-07-07: 76 rows · checksum 177962 · 11.01 s</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x,a=0,b=1) => Math.max(a, Math.min(b, x));
+const ease = x => x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+const prog = (t,a,b) => clamp((t-a)/(b-a));
+function fade(id, t, a, b, fadeDur=0.5) {       // visible in [a,b), fading in/out
+  const el = $(id); if (!el) return;
+  let o = 0;
+  if (t >= a && t < b) o = Math.min(prog(t,a,a+fadeDur), 1 - prog(t,b-fadeDur,b));
+  el.style.opacity = o;
+  el.style.visibility = o > 0.001 ? 'visible' : 'hidden';
+}
+function showFrom(id, t, a, dur=0.5) {             // appears at a and stays
+  const el = $(id); const o = prog(t,a,a+dur);
+  el.style.opacity = o; el.style.visibility = o>0.001?'visible':'hidden';
+}
+function glow(id, on) { $(id).classList.toggle('glow', !!on); }
+// packet along polyline pts between t0..t1
+function move(id, t, t0, t1, pts) {
+  const el = $(id);
+  if (t < t0 || t > t1) { el.style.visibility='hidden'; return; }
+  el.style.visibility='visible'; el.style.opacity = 1;
+  const p = ease(prog(t,t0,t1));
+  const seg = []; let tot = 0;
+  for (let i=1;i<pts.length;i++){ const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); seg.push(d); tot+=d; }
+  let dist = p*tot, i = 0;
+  while (i < seg.length-1 && dist > seg[i]) { dist -= seg[i]; i++; }
+  const f = seg[i] ? dist/seg[i] : 0;
+  const x = pts[i][0] + (pts[i+1][0]-pts[i][0])*f, y = pts[i][1] + (pts[i+1][1]-pts[i][1])*f;
+  el.style.left = x+'px'; el.style.top = y+'px';
+}
+function clockAt(t) {
+  // map video time to wall clock: export 07:00:00 at t=16; curate 07:20:00 at t=77
+  let secs;
+  if (t < 16) secs = 7*3600 - 2 + (t/16)*2;
+  else if (t < 70) secs = 7*3600 + (t-16)*(11.01/54);          // the export takes ~11 s of real time
+  else if (t < 77) secs = 7*3600 + 11 + prog(t,70,77)*(20*60-11);
+  else if (t < 98) secs = 7*3600 + 20*60 + (t-77)*0.45;
+  else secs = 7*3600 + 20*60 + 9.5;
+  const h = Math.floor(secs/3600), m = Math.floor(secs%3600/60), s = Math.floor(secs%60);
+  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' UTC';
+}
+
+// ---------- scene script ----------
+const T_END = 116;
+const captions = [
+  [0,   5,   '',  ''],
+  [5,  16,   'AWS', 'These are the <b>AWS services</b> involved. Everything is in the Test account and built by Terraform.'],
+  [16, 22,   '⏰', '<b>07:00 UTC</b>: EventBridge Scheduler tells ECS Fargate to start the <b>export</b> container.'],
+  [22, 29,   '1',  'The container starts. ECS injects the <b>database credentials</b> from Secrets Manager as an environment variable.'],
+  [29, 40,   '2',  'The Go code opens a <b>cursor</b> on Postgres and streams every trip for <b>2026-07-07</b>, 1,000 rows at a time: <b>76 rows</b>.'],
+  [40, 48,   '3–4','The rows are written to a local <b>Parquet</b> file, then uploaded to S3 under <b>raw/_staging/</b>.'],
+  [48, 51,   '5a', 'Athena registers the staging file as a <b>temporary table</b> in Glue, so SQL can read it.'],
+  [51, 54,   '5b', '<b>DELETE</b> any existing rows for 2026-07-07, so a re-run replaces data instead of duplicating it.'],
+  [54, 61,   '5c', '<b>INSERT</b>: Athena writes new Iceberg <b>data + metadata files</b>, then Glue\'s pointer moves to version <b>00002</b>. <b>Committed.</b>'],
+  [61, 63,   '5d', 'The temporary staging table is dropped from Glue.'],
+  [63, 70,   '6–7','Athena counts the lake: <b>76 = 76</b>, checksum <b>177962 = 177962</b>. The manifest is written: <b>success: true</b>.'],
+  [70, 77,   '⏰', 'The export container stops. <b>20 minutes later</b> the scheduler starts the <b>curate</b> job.'],
+  [77, 92,   '8–10','Curate: Athena copies the day from <b>raw</b> to <b>curated</b>, checks the counts again, and writes a second manifest.'],
+  [92, 104,  '🧹', 'Housekeeping: weekly <b>VACUUM</b>, safe Postgres <b>trim</b>, and <b>erasure</b> on request.'],
+  [104,116,  '',  ''],
+];
+
+function render(t) {
+  // header
+  $('clk').textContent = clockAt(t);
+  $('prog').style.width = (1920*clamp(t/T_END))+'px';
+
+  // cards
+  fade('card-intro', t, -1, 5.5, 0.8);
+  fade('card-end', t, 104, 999, 0.8);
+
+  // caption
+  const c = captions.find(c => t >= c[0] && t < c[1]) || captions[0];
+  $('capn').textContent = c[2]; $('capn').style.visibility = c[2] ? 'visible':'hidden';
+  $('capt').innerHTML = c[3];
+  const cf = Math.min(prog(t,c[0],c[0]+.4), 1);
+  $('capt').style.opacity = c[3] ? cf : 0;
+
+  // infra boxes appear one by one during 5..14
+  const order = ['b-sched','b-sec','b-pg','b-ecs','b-ath','b-glue','b-s3','b-cw'];
+  order.forEach((id,i) => showFrom(id, t, 5.3 + i*0.9, 0.6));
+  ['fd-stg','fd-raw','fd-rawd','fd-rawm','fd-cur','fd-curd','fd-curm','fd-man','fd-ares'].forEach((id,i)=>showFrom(id,t,11.6+i*0.25,0.4));
+  showFrom('k-export', t, 18.5, 0.8);
+  fade('k-export', t, 18.5, 71.5, 0.8);
+  showFrom('k-curate', t, 76, 0.8); fade('k-curate', t, 76, 93, 0.8);
+
+  // glue text states
+  $('glue-raw').textContent = t < 58.5 ? 'test_raw.trip_events → 00001' : 'test_raw.trip_events → 00002';
+  $('glue-raw').style.color = (t>=58.5 && t<62) ? '#FFD166' : '';
+  $('glue-cur').textContent = t < 86 ? 'test_curated.…_curated → 00004' : 'test_curated.…_curated → 00005';
+  $('glue-cur').style.color = (t>=86 && t<89) ? '#FFD166' : '';
+  fade('glue-stg', t, 49.5, 62.5, 0.4);
+
+  // glows
+  glow('b-sched', (t>=16&&t<19) || (t>=75&&t<78));
+  glow('b-sec',   t>=22&&t<26);
+  glow('b-pg',    t>=29&&t<40);
+  glow('b-ecs',   (t>=18&&t<48) );
+  glow('b-ath',   (t>=48&&t<70) || (t>=78&&t<92));
+  glow('b-glue',  (t>=49&&t<51) || (t>=58&&t<63) || (t>=85.5&&t<88));
+  glow('b-s3',    (t>=44&&t<48) || (t>=55&&t<60) || (t>=66&&t<70) || (t>=80&&t<92));
+  glow('b-cw',    (t>=69&&t<71));
+
+  // folder highlights
+  const hot = (id,on)=> $(id).classList.toggle('hot', !!on);
+  hot('fd-stg', t>=45&&t<57); hot('fd-rawd', t>=56&&t<59); hot('fd-rawm', t>=57&&t<60);
+  hot('fd-curd', t>=82&&t<85); hot('fd-curm', t>=84&&t<87); hot('fd-man', (t>=67&&t<70)||(t>=89&&t<92));
+  hot('fd-ares', (t>=64&&t<66));
+
+  // files
+  fade('f-tmp', t, 41, 46.5, 0.4);
+  showFrom('f-stg', t, 46.2, 0.4);
+  showFrom('f-rawd', t, 56.5, 0.5);
+  showFrom('f-rawm', t, 57.8, 0.5);
+  showFrom('f-man1', t, 68.3, 0.5);
+  showFrom('f-ares', t, 64.5, 0.5);
+  showFrom('f-curd', t, 83, 0.5);
+  showFrom('f-curm', t, 84.8, 0.5);
+  showFrom('f-man2', t, 90, 0.5);
+
+  // packets
+  move('p1', t, 16.2, 18.4, [[165,210],[165,235],[330,235],[550,200]]);          // scheduler -> ecs
+  move('p2', t, 23, 26,     [[165,360],[165,385],[330,385],[550,300]]);          // secret -> container
+  // row batches Postgres -> container (repeat)
+  const batchT = t>=30.5 && t<39 ? ((t-30.5)%2.1) : -1;
+  if (batchT>=0 && batchT<1.6) move('p3', batchT, 0, 1.6, [[290,515],[330,515],[450,360]]); else $('p3').style.visibility='hidden';
+  move('p4', t, 44.2, 46.2, [[640,395],[780,395],[1000,360]]);                  // tmp parquet -> s3 staging
+  move('p5', t, 48.2, 49.6, [[640,250],[780,190],[860,170]]);                    // container -> athena SQL
+  move('p7', t, 55,   56.6, [[1000,362],[1270,420],[1100,480]]);                 // staging -> raw data (through athena path)
+  move('p6', t, 57.8, 58.6, [[1080,560],[1180,300],[1150,200]]);                 // metadata -> glue pointer
+  move('p9', t, 63.4, 64.8, [[640,300],[800,200],[900,170]]);                    // count/sum queries
+  move('p8', t, 66.6, 68.3, [[640,330],[780,360],[1000,840]]);                   // manifest -> s3
+  // curate: raw -> curated rows
+  if (t>=80 && t<83) move('p7', t, 80, 82.8, [[1100,480],[1270,560],[1100,680]]);
+  if (t>=89 && t<90.2) move('p8', t, 89, 90.2, [[640,540],[780,600],[1000,866]]);
+  if (t>=78 && t<79.4) move('p5', t, 78, 79.4, [[640,500],[780,220],[860,170]]);
+
+  // container log lines (real log formats from cmd/export and cmd/curate)
+  [['le1',23],['le2',24.2],['le3',38.8],['le4',46.4],['le5',69.2],['lc1',78.2],['lc2',79.6],['lc3',91]].forEach(([id,a])=>showFrom(id,t,a,0.3));
+
+  // counters
+  const r = Math.round(76*prog(t,30.5,38.5));
+  $('rowsread').textContent = r;
+  $('pgsum').textContent = Math.round(177962*r/76);
+
+  // commit code highlight
+  const hl = (id,a,b)=>{ $(id).style.background = (t>=a&&t<b)?'rgba(183,148,255,.22)':'transparent'; $(id).style.opacity = t<a?0.45:1; };
+  hl('c5a',48,51); hl('c5b',51,54); hl('c5c',54,61); hl('c5d',61,63);
+
+  // panels
+  fade('pn-infra',   t, 5,   16);
+  fade('pn-trigger', t, 16,  22);
+  fade('pn-config',  t, 22,  29);
+  fade('pn-read',    t, 29,  40);
+  fade('pn-parquet', t, 40,  48);
+  fade('pn-commit',  t, 48,  63);
+  fade('pn-recon',   t, 63,  77);
+  fade('pn-curate',  t, 77,  92);
+  fade('pn-maint',   t, 92,  104);
+}
+window.render = render;
+window.T_END = T_END;
+
+if (!location.search.includes('capture')) {
+  const start = performance.now();
+  (function loop(){ const t = ((performance.now()-start)/1000) % T_END; render(t); requestAnimationFrame(loop); })();
+} else {
+  render(0);
+}
+</script>
+</body>
+</html>

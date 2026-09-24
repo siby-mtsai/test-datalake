@@ -1,0 +1,62 @@
+[
+  {
+    "start": 0.4,
+    "end": 5,
+    "text": "How the M T S A i data lake handles one night of trips."
+  },
+  {
+    "start": 5.4,
+    "end": 16,
+    "text": "Everything runs in the Test A W S account: a scheduler, E C S Fargate running our Go code, Postgres as the source, and S3, Glue and Athena as the lake."
+  },
+  {
+    "start": 16.2,
+    "end": 22,
+    "text": "At seven A M U T C, EventBridge Scheduler starts the export container on Fargate."
+  },
+  {
+    "start": 22.2,
+    "end": 29,
+    "text": "The job loads its settings, and E C S injects the database password from Secrets Manager."
+  },
+  {
+    "start": 29.2,
+    "end": 40,
+    "text": "The Go code opens a cursor on Postgres and streams every trip for July seventh, a thousand rows at a time. That day has seventy six rows."
+  },
+  {
+    "start": 40.2,
+    "end": 48,
+    "text": "The rows are written into a Parquet file, which is uploaded to a staging folder in S3."
+  },
+  {
+    "start": 48.2,
+    "end": 63,
+    "text": "Athena now commits into the Iceberg table. It registers the staging file, deletes old rows for that day, and inserts the new ones as new data and metadata files. Then Glue's pointer moves to the new version. That's the commit."
+  },
+  {
+    "start": 63.2,
+    "end": 70,
+    "text": "The job checks the lake: seventy six rows, the checksums match, and a manifest records success."
+  },
+  {
+    "start": 70.2,
+    "end": 77,
+    "text": "The export container stops. Twenty minutes later, the curate job starts."
+  },
+  {
+    "start": 77.2,
+    "end": 92,
+    "text": "Curate doesn't touch Postgres at all. Athena copies the day from the raw table into the curated table, the counts are checked again, and a second manifest is written."
+  },
+  {
+    "start": 92.2,
+    "end": 104,
+    "text": "Every Sunday, vacuum clears old versions and unused files. Trim drops old Postgres data only after a successful manifest. And erasure removes a vehicle's data on request."
+  },
+  {
+    "start": 104.4,
+    "end": 116,
+    "text": "That's the whole night. Re-runs replace data instead of duplicating it, new data only goes live when Glue's pointer moves, and any mismatch fails the run and sends an alert."
+  }
+]

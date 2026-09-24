@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/arch/iceberg-glue-architecture.png.
+  A deliberately simple picture of how Athena, the Glue Data Catalog and an Iceberg table in S3
+  work together, using test_raw.trip_events as the example. File names are illustrative.
+  Re-render after editing (PowerShell, from repo root):
+    $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+    & $edge --headless --disable-gpu --hide-scrollbars --window-size=1800,1345 --screenshot="$PWD\docs\arch\iceberg-glue-architecture.png" "file:///$PWD/docs/arch/iceberg-glue-architecture.html"
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Iceberg and Glue Architecture</title>
+<style>
+  html, body { margin: 0; background: #fff; }
+  body { width: 1800px; font-family: "Segoe UI", Arial, sans-serif; color: #232F3E; }
+  svg { display: block; font-family: "Segoe UI", Arial, sans-serif; }
+  .h1 { font-size: 32px; font-weight: 700; fill: #232F3E; }
+  .h2 { font-size: 16px; fill: #545B64; }
+  .bh { font-size: 21px; font-weight: 700; fill: #fff; }
+  .bs { font-size: 13px; fill: #fff; }
+  .big { font-size: 16px; font-weight: 700; fill: #232F3E; }
+  .t  { font-size: 14px; fill: #232F3E; }
+  .ts { font-size: 12.5px; fill: #545B64; }
+  .m  { font-family: Consolas, monospace; font-size: 13px; fill: #232F3E; }
+  .mb { font-family: Consolas, monospace; font-size: 13.5px; font-weight: 700; fill: #232F3E; }
+  .step { font-size: 14px; font-weight: 700; }
+  .flow { stroke: #232F3E; stroke-width: 2.4; fill: none; }
+  .ptr  { stroke: #D6246E; stroke-width: 2.6; fill: none; stroke-dasharray: 8 5; }
+  .ref  { stroke: #1E6FD9; stroke-width: 2; fill: none; }
+
+  .chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 0 40px 18px; }
+  .chip { border-radius: 10px; padding: 12px 16px; color: #fff; }
+  .chip b { display: block; font-size: 18px; }
+  .chip .role { font-size: 14.5px; margin-top: 2px; }
+  .chip .like { font-size: 13px; margin-top: 6px; opacity: .95; font-style: italic; }
+  .c-ath { background: #8C4FFF; } .c-glue { background: #D6246E; } .c-ice { background: #1E6FD9; } .c-pq { background: #2E7D32; } .c-s3 { background: #5B6770; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 20px; padding: 0 40px 30px; }
+  .panel { border: 1px solid #D5DBDB; border-radius: 12px; padding: 16px 18px; }
+  .panel h2 { margin: 0 0 4px; font-size: 19px; }
+  .q { font-family: Consolas, monospace; font-size: 12.5px; background: #F2F3F3; padding: 5px 9px; border-radius: 5px; margin: 6px 0 12px; }
+  .row { display: grid; grid-template-columns: 32px 1fr; gap: 10px; margin-bottom: 10px; font-size: 14.5px; line-height: 1.45; align-items: start; }
+  .n { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .nr { background: #232F3E; } .nw { background: #E8710A; }
+  .why { font-size: 13.5px; background: #FFF8E6; border: 1px solid #EAC675; border-radius: 8px; padding: 8px 12px; margin-top: 6px; line-height: 1.45; }
+  .panel ul { margin: 6px 0 0; padding-left: 20px; }
+  .panel li { font-size: 14.5px; line-height: 1.5; margin-bottom: 8px; }
+  code { font-family: Consolas, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<svg width="1800" height="835" viewBox="0 0 1800 835">
+  <defs>
+    <marker id="aK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#232F3E"/></marker>
+    <marker id="aP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D6246E"/></marker>
+    <marker id="aI" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1E6FD9"/></marker>
+  </defs>
+
+  <text x="40" y="52" class="h1">How Iceberg and Glue work together</text>
+  <text x="40" y="82" class="h2">Iceberg is not a program you run. It's a way of storing a table as files in S3 so that Athena can find, read and change them safely.</text>
+
+  <!-- ===== Go job ===== -->
+  <rect x="40" y="370" width="250" height="120" rx="12" fill="#E6F4F8" stroke="#007D9C" stroke-width="2"/>
+  <text x="60" y="402" class="big">Go job</text>
+  <text x="60" y="426" class="t">cmd/export · cmd/curate</text>
+  <text x="60" y="448" class="t">sends SQL to Athena</text>
+  <text x="60" y="472" class="ts">never touches Iceberg files itself</text>
+  <line x1="290" y1="430" x2="398" y2="430" class="flow" marker-end="url(#aK)"/>
+  <text x="318" y="420" class="step">SQL</text>
+
+  <!-- ===== Athena ===== -->
+  <rect x="400" y="340" width="300" height="180" rx="12" fill="#F3EEFF" stroke="#8C4FFF" stroke-width="2"/>
+  <rect x="400" y="340" width="300" height="48" rx="12" fill="#8C4FFF"/>
+  <rect x="400" y="370" width="300" height="18" fill="#8C4FFF"/>
+  <text x="420" y="372" class="bh">Athena</text>
+  <text x="420" y="418" class="big">the engine</text>
+  <text x="420" y="444" class="t">does ALL the reading and writing</text>
+  <text x="420" y="466" class="t">always asks Glue first,</text>
+  <text x="420" y="488" class="t">then goes to the Iceberg files</text>
+
+  <!-- ===== Glue ===== -->
+  <rect x="760" y="120" width="360" height="200" rx="12" fill="#FCEFF4" stroke="#D6246E" stroke-width="2"/>
+  <rect x="760" y="120" width="360" height="48" rx="12" fill="#D6246E"/>
+  <rect x="760" y="150" width="360" height="18" fill="#D6246E"/>
+  <text x="780" y="152" class="bh">Glue Data Catalog</text>
+  <text x="780" y="194" class="big">the address book</text>
+  <rect x="780" y="206" width="320" height="100" rx="8" fill="#fff" stroke="#D6246E"/>
+  <text x="796" y="230" class="mb">test_raw.trip_events</text>
+  <text x="796" y="252" class="m">type: ICEBERG</text>
+  <text x="796" y="274" class="m">live version is at →</text>
+  <text x="796" y="294" class="mb">metadata/00002.metadata.json</text>
+
+  <!-- Athena <-> Glue -->
+  <path d="M640,338 V240 H758" class="flow" marker-end="url(#aK)"/>
+  <text x="630" y="232" class="step" text-anchor="end">① "Where is trip_events?"</text>
+  <path d="M758,290 H680 V336" class="flow" marker-end="url(#aK)"/>
+  <text x="628" y="306" class="step" text-anchor="end">② "Its live version is 00002"</text>
+
+  <!-- Glue pointer into Iceberg -->
+  <text x="780" y="345" class="ts" style="fill:#D6246E;font-weight:700">pink dashed line = Glue's pointer to the live version</text>
+
+  <!-- Athena -> Iceberg -->
+
+  <!-- ===== S3 BUCKET (outer) ===== -->
+  <rect x="1160" y="88" width="620" height="732" rx="16" fill="#F1F8EC" stroke="#3F8624" stroke-width="2.5"/>
+  <text x="1180" y="114" style="font-size:17px;font-weight:800;fill:#3F8624">S3 BUCKET: mtsai-datalake-test-690293068614-ap-south-1</text>
+  <text x="1180" y="134" class="ts" style="fill:#3F8624">storage only: it holds files and knows nothing about tables</text>
+  <text x="1180" y="792" class="ts" style="fill:#3F8624">The same bucket also holds: curated/trip_events/ (a second Iceberg table),</text>
+  <text x="1180" y="809" class="ts" style="fill:#3F8624">raw/_staging/ (temporary Parquet), export-manifests/, athena-results/</text>
+
+  <!-- ===== ICEBERG TABLE (a folder inside the bucket) ===== -->
+  <g transform="translate(0,40)">
+  <rect x="1180" y="110" width="580" height="620" rx="14" fill="#EAF3FD" stroke="#1E6FD9" stroke-width="3"/>
+  <rect x="1180" y="110" width="580" height="70" rx="14" fill="#1E6FD9"/>
+  <rect x="1180" y="160" width="580" height="20" fill="#1E6FD9"/>
+  <!-- iceberg icon -->
+  <g transform="translate(1690,118)">
+    <line x1="-8" y1="26" x2="62" y2="26" stroke="#BFE0FF" stroke-width="2"/>
+    <polygon points="14,26 26,6 34,14 40,26" fill="#fff"/>
+    <polygon points="4,26 50,26 42,48 26,56 10,46" fill="#BFE0FF"/>
+  </g>
+  <text x="1200" y="148" style="font-size:25px;font-weight:800;fill:#fff">ICEBERG TABLE: trip_events</text>
+  <text x="1200" y="170" class="bs">the folder raw/trip_events/ inside the bucket, organised the Iceberg way</text>
+
+  <!-- metadata drawer -->
+  <rect x="1200" y="196" width="540" height="262" rx="10" fill="#fff" stroke="#1E6FD9" stroke-width="1.6"/>
+  <text x="1218" y="222" class="big" style="fill:#1E6FD9">metadata/   →  the table of contents</text>
+
+  <rect x="1218" y="236" width="504" height="60" rx="8" fill="#FFF4F8" stroke="#D6246E" stroke-width="2.2"/>
+  <text x="1234" y="260" class="mb">00002.metadata.json   ★ live version</text>
+  <text x="1234" y="283" class="ts">the columns, the versions (snapshots), and which one is live</text>
+  <line x1="1470" y1="296" x2="1470" y2="312" class="ref" marker-end="url(#aI)"/>
+
+  <rect x="1218" y="314" width="504" height="56" rx="8" fill="#F5F9FF" stroke="#8DB6EC"/>
+  <text x="1234" y="337" class="mb">manifest list</text>
+  <text x="1234" y="358" class="ts">which manifests make up this version</text>
+  <line x1="1470" y1="370" x2="1470" y2="386" class="ref" marker-end="url(#aI)"/>
+
+  <rect x="1218" y="388" width="504" height="56" rx="8" fill="#F5F9FF" stroke="#8DB6EC"/>
+  <text x="1234" y="411" class="mb">manifests</text>
+  <text x="1234" y="432" class="ts">every Parquet file: its date, row count, min/max values</text>
+
+
+  <!-- data drawer -->
+  <rect x="1200" y="474" width="540" height="240" rx="10" fill="#fff" stroke="#3F8624" stroke-width="1.6"/>
+  <text x="1218" y="500" class="big" style="fill:#3F8624">data/   →  the actual rows</text>
+
+  <rect x="1218" y="524" width="160" height="116" rx="8" fill="#F4FAF1" stroke="#9CCB86" stroke-dasharray="5 3"/>
+  <text x="1232" y="545" class="ts" style="font-weight:700">2026-07-06</text>
+  <rect x="1230" y="556" width="136" height="32" rx="5" fill="#fff" stroke="#3F8624"/><text x="1242" y="577" class="m">part-1.parquet</text>
+  <rect x="1230" y="596" width="136" height="32" rx="5" fill="#fff" stroke="#3F8624"/><text x="1242" y="617" class="m">part-2.parquet</text>
+
+  <rect x="1392" y="524" width="160" height="116" rx="8" fill="#F4FAF1" stroke="#9CCB86" stroke-dasharray="5 3"/>
+  <text x="1406" y="545" class="ts" style="font-weight:700">2026-07-07</text>
+  <rect x="1404" y="556" width="136" height="32" rx="5" fill="#fff" stroke="#3F8624"/><text x="1416" y="577" class="m">part-3.parquet</text>
+  <rect x="1404" y="596" width="136" height="32" rx="5" fill="#fff" stroke="#3F8624"/><text x="1416" y="617" class="m">part-4.parquet</text>
+
+  <rect x="1566" y="524" width="156" height="116" rx="8" fill="#FDF3F2" stroke="#E6A5A0" stroke-dasharray="5 3"/>
+  <text x="1580" y="545" class="ts" style="font-weight:700">delete file</text>
+  <rect x="1578" y="556" width="132" height="32" rx="5" fill="#fff" stroke="#C0392B"/><text x="1586" y="577" class="m">deletes.parquet</text>
+  <text x="1580" y="610" class="ts">"these rows were</text>
+  <text x="1580" y="626" class="ts">removed by DELETE"</text>
+
+  <text x="1218" y="668" class="t">Parquet files are <tspan font-weight="700">never edited</tspan>. Every change adds new files</text>
+  <text x="1218" y="690" class="t">and a new version in metadata/. Old versions stay until VACUUM.</text>
+
+  </g>
+
+  <!-- arrows drawn last so they sit on top of the Iceberg box -->
+  <path d="M1100,270 H1140 V306 H1218" class="ptr" marker-end="url(#aP)"/>
+  <line x1="700" y1="405" x2="1198" y2="405" class="flow" marker-end="url(#aK)"/>
+  <text x="720" y="396" class="step">③ read the table of contents (metadata/)</text>
+  <path d="M700,480 H1150 V600 H1198" class="flow" marker-end="url(#aK)"/>
+  <text x="720" y="471" class="step">④ read ONLY the Parquet files it needs (data/)</text>
+  <path d="M1690,484 V562" class="ref" marker-end="url(#aI)"/>
+  <text x="1680" y="509" class="ts" text-anchor="end" style="fill:#1E6FD9;font-weight:700">lists these files ↓</text>
+</svg>
+
+<div class="chips">
+  <div class="chip c-ath"><b>Athena</b><div class="role">Does the work: runs the SQL, reads and writes the files.</div><div class="like">Like a librarian.</div></div>
+  <div class="chip c-glue"><b>Glue Data Catalog</b><div class="role">Says WHERE the table is: points at its live metadata.json.</div><div class="like">Like the library's catalog card.</div></div>
+  <div class="chip c-ice"><b>Iceberg (metadata/)</b><div class="role">Says WHICH files make up the table, and keeps every version.</div><div class="like">Like a book's table of contents.</div></div>
+  <div class="chip c-s3"><b>S3 bucket</b><div class="role">Stores every file. Has no idea what a "table" is.</div><div class="like">Like the library building and its shelves.</div></div>
+  <div class="chip c-pq"><b>Parquet files (data/)</b><div class="role">Hold the actual ROWS, stored column by column.</div><div class="like">Like the pages of the book.</div></div>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <h2>Reading data</h2>
+    <div class="q">SELECT COUNT(*) FROM trip_events WHERE event_date = DATE '2026-07-07'</div>
+    <div class="row"><div class="n nr">1</div><div>Athena asks <b>Glue</b>: "where is trip_events?" Glue answers with the <b>live metadata.json</b>.</div></div>
+    <div class="row"><div class="n nr">2</div><div>Athena opens it: the <b>table of contents</b> for the current version.</div></div>
+    <div class="row"><div class="n nr">3</div><div>The manifests list every file and its date, so Athena <b>skips every file that isn't 2026-07-07</b>.</div></div>
+    <div class="row"><div class="n nr">4</div><div>It reads only those few Parquet files, leaves out deleted rows, and returns the answer.</div></div>
+    <div class="why"><b>Why it's fast and cheap:</b> Athena only opens the files it needs, even when the table has years of data.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Writing data</h2>
+    <div class="q">INSERT INTO trip_events SELECT … (what cmd/export does every night)</div>
+    <div class="row"><div class="n nw">1</div><div>Athena writes <b>new</b> Parquet files into <code>data/</code>. Old files are not touched.</div></div>
+    <div class="row"><div class="n nw">2</div><div>It writes a new table of contents: new manifests and <b>00003.metadata.json</b>.</div></div>
+    <div class="row"><div class="n nw">3</div><div>It asks Glue to <b>move the pointer</b> from 00002 to 00003. <b>This moment is when the new data goes live.</b></div></div>
+    <div class="row"><div class="n nw">4</div><div>If anything fails before step 3, the pointer never moved, so everyone still sees the old table. <b>Nobody ever sees half-written data.</b></div></div>
+    <div class="why"><b>DELETE works the same way:</b> instead of changing a Parquet file, it adds a small "delete file" plus a new version.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Good to know</h2>
+    <ul>
+      <li><b>Every version is kept</b>, so you can query the table as it was yesterday (time travel).</li>
+      <li><b>VACUUM</b> (weekly, <code>cmd/compact</code>) removes old versions and the files nothing uses anymore.</li>
+      <li><b>Never edit or delete files in S3 by hand.</b> Always change the table with SQL in Athena, or the table of contents stops matching the files.</li>
+      <li>Our Go code writes <b>no Iceberg files</b>. It only sends SQL.</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
