@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -37,6 +38,15 @@ func main() {
 		log.Fatalf("erasure failed: %v", err)
 	}
 }
+
+// Input now arrives from a UI (the mtsai-analytics Erase feature) via ecs:RunTask environment
+// overrides, not just from an operator's CLI. The identifier is interpolated straight into Athena
+// SQL and the request ref becomes an S3 key, so both are allow-listed rather than escaped.
+var (
+	identifierPattern   = regexp.MustCompile(`^[A-Za-z0-9_]{1,128}$`)
+	requestRefPattern   = regexp.MustCompile(`^[A-Za-z0-9._-]{3,64}$`)
+	jurisdictionPattern = regexp.MustCompile(`^[A-Z]{2}$`)
+)
 
 type config struct {
 	Bucket          string
@@ -67,6 +77,15 @@ func loadConfig() (*config, error) {
 	// action; silently defaulting either would be exactly the wrong instinct.
 	if cfg.RequestRef == "" || cfg.Identifier == "" {
 		return nil, fmt.Errorf("ERASURE_REQUEST_REF and ERASURE_IDENTIFIER are both required")
+	}
+	if !identifierPattern.MatchString(cfg.Identifier) {
+		return nil, fmt.Errorf("ERASURE_IDENTIFIER must match %s", identifierPattern)
+	}
+	if !requestRefPattern.MatchString(cfg.RequestRef) {
+		return nil, fmt.Errorf("ERASURE_REQUEST_REF must match %s", requestRefPattern)
+	}
+	if cfg.Jurisdiction != "" && !jurisdictionPattern.MatchString(cfg.Jurisdiction) {
+		return nil, fmt.Errorf("ERASURE_JURISDICTION must match %s when set", jurisdictionPattern)
 	}
 	if cfg.Region == "" {
 		cfg.Region = "ap-south-1"
