@@ -200,6 +200,83 @@ data "aws_iam_policy_document" "consumer_access" {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.kms_key_arn]
   }
+
+  # --- Erasure launch (only for consumers with erasure_access, and only once the erasure task's
+  # ARNs are wired in). This lets the role *start* the existing erasure task and read its
+  # manifests - it deliberately grants no s3:DeleteObject/PutObject and no Glue writes; the task
+  # does the deleting under its own task role. ecs:RunTask can't restrict container/role
+  # overrides via IAM, so iam:PassRole below is limited to exactly the roles the task definition
+  # already references.
+  dynamic "statement" {
+    for_each = each.value.erasure_access && local.erasure_grants_enabled ? [1] : []
+    content {
+      sid       = "RunErasureTaskOnly"
+      actions   = ["ecs:RunTask"]
+      resources = [local.erasure_task_family_arn]
+      condition {
+        test     = "ArnEquals"
+        variable = "ecs:cluster"
+        values   = [var.erasure_cluster_arn]
+      }
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.erasure_access && local.erasure_grants_enabled ? [1] : []
+    content {
+      sid       = "DescribeErasureTasks"
+      actions   = ["ecs:DescribeTasks"]
+      resources = [local.erasure_cluster_tasks_arn]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.erasure_access && local.erasure_grants_enabled ? [1] : []
+    content {
+      sid       = "PassErasureRolesToEcs"
+      actions   = ["iam:PassRole"]
+      resources = var.erasure_pass_role_arns
+      condition {
+        test     = "StringEquals"
+        variable = "iam:PassedToService"
+        values   = ["ecs-tasks.amazonaws.com"]
+      }
+    }
+  }
+
+  dynamic "statement" {
+    for_each = each.value.erasure_access && local.erasure_grants_enabled ? [1] : []
+    content {
+      sid       = "ReadErasureManifests"
+      actions   = ["s3:GetObject"]
+      resources = ["arn:aws:s3:::${var.bucket_name}/export-manifests/erasure/*"]
+    }
+  }
+
+  # Prefix-scoped like the other ListBucket grants above - a bare-bucket ListBucket would let the
+  # role enumerate every zone's keys.
+  dynamic "statement" {
+    for_each = each.value.erasure_access && local.erasure_grants_enabled ? [1] : []
+    content {
+      sid       = "ListErasureManifests"
+      actions   = ["s3:ListBucket"]
+      resources = ["arn:aws:s3:::${var.bucket_name}"]
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values   = ["export-manifests/erasure/*"]
+      }
+    }
+  }
+}
+
+locals {
+  erasure_grants_enabled = var.erasure_task_definition_arn != "" && var.erasure_cluster_arn != "" && length(var.erasure_pass_role_arns) > 0
+  # arn:aws:ecs:<region>:<acct>:task-definition/<family>:<rev>  ->  …/<family>:*  (every revision,
+  # so a new image/revision doesn't silently revoke the grant)
+  erasure_task_family_arn = replace(var.erasure_task_definition_arn, "/:[0-9]+$/", ":*")
+  # arn:aws:ecs:<region>:<acct>:cluster/<name>  ->  arn:aws:ecs:<region>:<acct>:task/<name>/*
+  erasure_cluster_tasks_arn = "${replace(var.erasure_cluster_arn, ":cluster/", ":task/")}/*"
 }
 
 resource "aws_iam_role_policy" "consumer" {

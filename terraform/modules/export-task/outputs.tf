@@ -31,6 +31,10 @@ output "task_role_arn" {
   value = aws_iam_role.task.arn
 }
 
+output "execution_role_arn" {
+  value = aws_iam_role.execution.arn
+}
+
 output "alarm_topic_arn" {
   value = aws_sns_topic.export_alarms.arn
 }

@@ -33,6 +33,35 @@ module "athena_workgroup" {
   raw_database_name          = module.glue_catalog.raw_database_name
   budget_notification_emails = var.alarm_email != "" ? [var.alarm_email] : []
   tags                       = local.common_tags
+
+  # Lets each consumer launch the existing erasure task for the mtsai-analytics dashboard's Erase
+  # feature (docs/prompts/001-consumer-erasure-access.md). Only export_task -> athena_workgroup
+  # references, never the reverse, so there's no dependency cycle.
+  erasure_task_definition_arn = module.export_task.erasure_task_definition_arn
+  erasure_cluster_arn         = module.export_task.cluster_arn
+  erasure_pass_role_arns      = [module.export_task.task_role_arn, module.export_task.execution_role_arn]
+
+  # The module's defaults, copied exactly, with erasure_access added.
+  consumers = {
+    analytics = {
+      bytes_scanned_cutoff_per_query = 5368709120 # 5 GB
+      monthly_budget_usd             = 50
+      raw_zone_read_access           = false
+      erasure_access                 = true
+    }
+    forecasting = {
+      bytes_scanned_cutoff_per_query = 5368709120
+      monthly_budget_usd             = 50
+      raw_zone_read_access           = false
+      erasure_access                 = true
+    }
+    audit = {
+      bytes_scanned_cutoff_per_query = 10737418240 # 10 GB
+      monthly_budget_usd             = 25
+      raw_zone_read_access           = true
+      erasure_access                 = true
+    }
+  }
 }
 
 module "mtsai_api_sim" {

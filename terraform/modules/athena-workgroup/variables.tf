@@ -32,6 +32,10 @@ variable "consumers" {
     # ARNs allowed to assume this consumer's role. Left empty (defaults to the account root) until
     # the actual mtsai-analytics / forecasting / audit service principals are confirmed - TODO.
     assumed_by_arns = optional(list(string), [])
+    # Lets this consumer launch the existing erasure task (and read its manifests), for the
+    # mtsai-analytics dashboard's Erase feature. The role still gets no direct delete/write access
+    # to lake data - the erasure task does the deleting under its own task role.
+    erasure_access = optional(bool, false)
   }))
   default = {
     analytics = {
@@ -59,6 +63,24 @@ variable "account_id" {
 
 variable "budget_notification_emails" {
   description = "Email addresses notified when a consumer's monthly Athena budget is exceeded. Required for aws_budgets_budget notifications; leave empty to skip creating budgets until confirmed (see module README re: cost-allocation tags)."
+  type        = list(string)
+  default     = []
+}
+
+variable "erasure_task_definition_arn" {
+  description = "ARN of the erasure ECS task definition (any revision; the policy grants the whole family). Empty disables the erasure grants."
+  type        = string
+  default     = ""
+}
+
+variable "erasure_cluster_arn" {
+  description = "ARN of the ECS cluster the erasure task runs on. Empty disables the erasure grants."
+  type        = string
+  default     = ""
+}
+
+variable "erasure_pass_role_arns" {
+  description = "IAM roles the erasure task definition references (task role + execution role), which ecs:RunTask requires iam:PassRole on. Empty disables the erasure grants."
   type        = list(string)
   default     = []
 }
