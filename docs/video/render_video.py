@@ -6,7 +6,8 @@ frames into ffmpeg (bundled by imageio-ffmpeg).
 
     python -m venv videnv
     videnv/Scripts/python -m pip install playwright imageio-ffmpeg
-    videnv/Scripts/python docs/video/render_video.py            # full video
+    videnv/Scripts/python docs/video/render_video.py            # pipeline video
+    videnv/Scripts/python docs/video/render_video.py --page access-video.html --out MTSAi-Data-Lake-Access.mp4
     videnv/Scripts/python docs/video/render_video.py --stills 10 30 57   # preview PNGs only
 """
 import argparse
@@ -17,20 +18,22 @@ import imageio_ffmpeg
 from playwright.sync_api import sync_playwright
 
 HERE = pathlib.Path(__file__).resolve().parent
-PAGE = (HERE / "pipeline-video.html").as_uri() + "?capture"
-OUT = HERE / "MTSAi-Data-Lake-Pipeline.mp4"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fps", type=int, default=24)
     ap.add_argument("--stills", type=float, nargs="*")
+    ap.add_argument("--page", default="pipeline-video.html")
+    ap.add_argument("--out", default="MTSAi-Data-Lake-Pipeline.mp4")
     args = ap.parse_args()
+    page_url = (HERE / args.page).as_uri() + "?capture"
+    OUT = HERE / args.out
 
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="msedge")
         page = browser.new_page(viewport={"width": 1920, "height": 1080})
-        page.goto(PAGE)
+        page.goto(page_url)
         page.wait_for_function("typeof window.render === 'function'")
         stage = page.locator("#stage")
 

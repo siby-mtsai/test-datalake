@@ -1,0 +1,11 @@
+[
+  {"start": 0.5,   "end": 8.2, "text": "Here's how to query the data lake, step by step, in seven short chapters."},
+  {"start": 8.4,   "end": 24,  "text": "Chapter one: before you start. You need permission to use your team's role, your team's workgroup, and the database you're allowed to read. Every team can read curated. Only audit can read raw."},
+  {"start": 24.4,  "end": 46,  "text": "Chapter two: getting in. In the A W S console, switch to your team's role, open Athena in the Mumbai region, and pick your team's workgroup and the curated database. Or, on the command line, add a profile that assumes the same role, and check it with get caller identity."},
+  {"start": 46.4,  "end": 72,  "text": "Chapter three: writing a good query. This one counts trips and average fare per city for one day. Follow four rules. Pick the right database. Always filter on event date, so Athena skips other days. Select only the columns you need. And add a limit while exploring. A filtered query reads a tiny fraction of the data."},
+  {"start": 72.4,  "end": 94,  "text": "Chapter four: running it. Press run, and the query goes from queued, to running, to succeeded. You get the rows, the run time, and how much data was scanned. Always check that number. A copy of the results is saved in your team's folder for seven days."},
+  {"start": 94.4,  "end": 112, "text": "Chapter five: cost and limits. Athena charges about five dollars per terabyte scanned, with a ten megabyte minimum. A query that passes your team's limit is cancelled, and a monthly budget emails the team."},
+  {"start": 112.4, "end": 136, "text": "Chapter six: when it goes wrong. Access denied on the raw database means raw is audit only. Not authorized on a workgroup means you picked the wrong one. Bytes scanned limit exceeded means you need a date filter. And table not found usually means the wrong database is selected."},
+  {"start": 136.4, "end": 146, "text": "Chapter seven: bonus. Iceberg lets you list every version of a table, and query it as it was at an earlier time."},
+  {"start": 146.4, "end": 158, "text": "Here's everything on one page. Assume your role, pick your workgroup, filter by date, and check what you scanned. Pause the video to keep it handy."}
+]

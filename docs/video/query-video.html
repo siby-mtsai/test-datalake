@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/video/MTSAi-Data-Lake-Query-HowTo.mp4: how a team member queries the lake, in
+  seven chapters. window.render(t) draws the frame at t seconds (see render_video.py).
+  Names/limits from terraform/modules/athena-workgroup (Test). Query results, run times and bytes
+  scanned shown on screen are illustrative; Athena pricing is approximate - check AWS pricing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Querying the Data Lake</title>
+<style>
+  html, body { margin: 0; background: #0F1722; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0F1722; font-family: "Segoe UI", Arial, sans-serif; color: #E8EDF3; }
+  .abs { position: absolute; }
+  code, .mono { font-family: Consolas, monospace; }
+
+  /* header + chapter bar */
+  #hdr { left: 0; top: 0; width: 1920px; height: 84px; background: #16202E; border-bottom: 1px solid #263345; }
+  #title { left: 36px; top: 12px; font-size: 25px; font-weight: 800; }
+  #title span { color: #7FB2FF; }
+  #tsub { left: 36px; top: 48px; font-size: 13px; color: #9AA8BA; }
+  #chapbar { left: 520px; top: 16px; width: 1364px; height: 52px; display: flex; gap: 6px; }
+  .seg { flex: 1; position: relative; border-radius: 8px; background: #0F1722; border: 1px solid #263345; overflow: hidden; }
+  .seg i { position: absolute; left: 0; top: 0; bottom: 0; background: #1F3A66; }
+  .seg span { position: absolute; left: 10px; top: 8px; right: 6px; font-size: 13px; font-weight: 700; color: #9AA8BA; white-space: nowrap; line-height: 1.15; }
+  .seg span b { display: block; font-size: 11px; font-weight: 600; opacity: .8; }
+  .seg.on { border-color: #4F8CFF; box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
+  .seg.on span { color: #fff; }
+  .seg.done span { color: #C9D4E2; }
+
+  /* panes */
+  .box { position: absolute; background: #16202E; border: 1px solid #263345; border-radius: 14px; box-sizing: border-box; }
+  .lbl { font-size: 13px; color: #9AA8BA; }
+  .val { font-family: Consolas, monospace; font-size: 17px; font-weight: 700; color: #fff; }
+  .y { color: #5BE37D; font-weight: 800; } .x { color: #FF6B6B; font-weight: 800; }
+  .glow { box-shadow: 0 0 0 3px rgba(255,209,102,.55), 0 0 24px rgba(255,209,102,.35) !important; border-color: #FFD166 !important; }
+  .h3 { font-size: 21px; font-weight: 800; }
+
+  /* id card */
+  #idcard { left: 60px; top: 120px; width: 1190px; height: 420px; background: linear-gradient(135deg,#17264A,#16202E 60%); border: 2px solid #4F8CFF; border-radius: 18px; padding: 24px 30px; box-sizing: border-box; }
+  #idcard .top { display: flex; align-items: center; gap: 18px; }
+  #idcard .av { width: 64px; height: 64px; border-radius: 16px; background: #4F8CFF; color: #06122B; font-weight: 900; font-size: 32px; display: flex; align-items: center; justify-content: center; }
+  #idcard .grid { display: grid; grid-template-columns: 220px 1fr; row-gap: 14px; margin-top: 22px; font-size: 17px; }
+  #idcard .grid .k { color: #9AA8BA; }
+  #teamtbl { left: 60px; top: 570px; width: 1190px; height: 360px; padding: 18px 26px; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 17px; margin-top: 8px; }
+  table.t th { text-align: left; color: #9AA8BA; font-weight: 600; padding: 9px 8px; border-bottom: 1px solid #2A3A50; font-size: 15px; }
+  table.t td { padding: 11px 8px; border-bottom: 1px solid #1C2838; }
+
+  /* console mock + cli */
+  .step { position: absolute; left: 20px; width: 540px; height: 210px; border-radius: 12px; background: #0F1722; border: 1px solid #2A3A50; padding: 14px 18px; box-sizing: border-box; }
+  .step .n { display: inline-flex; width: 32px; height: 32px; border-radius: 50%; background: #3A4A60; align-items: center; justify-content: center; font-weight: 800; margin-right: 10px; }
+  .step.on .n { background: #4F8CFF; }
+  .field { margin-top: 10px; background: #0A0F16; border: 1px solid #2A3A50; border-radius: 8px; padding: 7px 12px; font-family: Consolas, monospace; font-size: 15px; display: flex; justify-content: space-between; }
+  .field span { color: #9AA8BA; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
+  .btn { display: inline-block; margin-top: 10px; background: #FF9900; color: #1A1000; font-weight: 800; padding: 6px 16px; border-radius: 8px; font-size: 14px; }
+  .code { background: #0B1119; border: 1px solid #243244; border-radius: 10px; padding: 14px 16px; font-family: Consolas, monospace; font-size: 15px; line-height: 1.6; white-space: pre; color: #D6DEE9; }
+  .kw { color: #FF7AB6; } .str { color: #9BE38F; } .cm { color: #6C7D93; } .num { color: #FFD166; } .id { color: #7FC8FF; }
+
+  /* editor */
+  #editor { left: 60px; top: 120px; width: 1190px; height: 440px; overflow: hidden; }
+  #edbar { height: 58px; background: #1C2838; border-bottom: 1px solid #263345; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .dd { background: #0F1722; border: 1px solid #2A3A50; border-radius: 8px; padding: 6px 12px; font-size: 14px; }
+  .dd b { font-family: Consolas, monospace; color: #fff; }
+  #runbtn { margin-left: auto; background: #2E7D32; color: #fff; font-weight: 800; padding: 8px 20px; border-radius: 8px; font-size: 15px; }
+  #runbtn.press { background: #5BE37D; color: #062010; transform: scale(.96); }
+  #status { font-family: Consolas, monospace; font-size: 14px; font-weight: 800; padding: 6px 12px; border-radius: 8px; }
+  #edbody { display: flex; padding: 16px 0; }
+  #ln { width: 52px; text-align: right; padding-right: 14px; color: #4A5A70; font-family: Consolas, monospace; font-size: 21px; line-height: 1.6; white-space: pre; }
+  #qtext { font-family: Consolas, monospace; font-size: 21px; line-height: 1.6; white-space: pre; color: #E0E7F0; }
+  .caret { display: inline-block; width: 11px; height: 24px; background: #7FB2FF; vertical-align: -4px; }
+
+  .rule { position: absolute; top: 588px; width: 284px; height: 170px; border-radius: 12px; background: #16202E; border: 1px solid #263345; padding: 14px 16px; box-sizing: border-box; }
+  .rule .n { width: 34px; height: 34px; border-radius: 50%; background: #FFD166; color: #1A1400; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .rule b { display: block; font-size: 18px; margin: 10px 0 4px; }
+  .rule p { margin: 0; font-size: 14.5px; color: #B8C4D4; line-height: 1.4; }
+  .cmp { position: absolute; left: 60px; width: 1190px; height: 70px; }
+  .cmp .q { font-family: Consolas, monospace; font-size: 15px; color: #C9D4E2; }
+  .cmp .bar { margin-top: 8px; height: 24px; white-space: nowrap; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; font-size: 13px; font-weight: 800; color: #0F1722; }
+
+  /* results */
+  #results { left: 60px; top: 590px; width: 760px; height: 340px; padding: 16px 20px; }
+  #stats { left: 840px; top: 590px; width: 410px; height: 170px; padding: 16px 20px; }
+  #resfile { left: 840px; top: 780px; width: 410px; height: 150px; padding: 16px 20px; }
+  .stat { display: flex; justify-content: space-between; font-size: 17px; padding: 6px 0; border-bottom: 1px solid #1C2838; }
+  .stat b { font-family: Consolas, monospace; }
+
+  /* cost */
+  #formula { left: 60px; top: 120px; width: 1190px; height: 170px; padding: 24px 30px; }
+  .ex { position: absolute; top: 320px; width: 380px; height: 270px; padding: 18px 20px; }
+  .ex .big { font-family: Consolas, monospace; font-size: 34px; font-weight: 800; color: #FFD166; margin-top: 10px; }
+  .gauge { margin-top: 14px; height: 18px; background: #0A0F16; border: 1px solid #2A3A50; border-radius: 9px; position: relative; overflow: hidden; }
+  .gauge i { position: absolute; left: 0; top: 0; bottom: 0; }
+  #budget { left: 60px; top: 620px; width: 1190px; height: 310px; padding: 22px 30px; }
+  #bbar { position: relative; margin-top: 22px; height: 34px; background: #0A0F16; border: 1px solid #2A3A50; border-radius: 17px; overflow: hidden; }
+  #bbar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg,#2E7D32,#FFD166,#FF6B6B); }
+  #mail { position: absolute; right: 40px; top: 190px; background: #3A2A10; border: 1px solid #FFD166; color: #FFE3B0; border-radius: 12px; padding: 12px 16px; font-size: 16px; }
+
+  /* errors */
+  .err { position: absolute; width: 585px; height: 395px; padding: 18px 22px; }
+  .err .eh { display: inline-block; background: #5E1E1E; color: #FFC9C9; border: 1px solid #FF6B6B; border-radius: 8px; padding: 3px 10px; font-weight: 800; font-size: 14px; }
+  .err .msg { margin-top: 12px; background: #1A0D0D; border: 1px solid #5E2A2A; border-radius: 8px; padding: 10px 12px; font-family: Consolas, monospace; font-size: 14px; color: #FFB3B3; line-height: 1.45; white-space: pre-wrap; }
+  .err .w { margin-top: 12px; font-size: 16px; line-height: 1.45; color: #D6DEE9; }
+  .err .w b { color: #FFD166; }
+  .err .f { margin-top: 8px; font-size: 16px; line-height: 1.45; color: #B8F5C8; }
+
+  /* right panel */
+  #panel { left: 1300px; top: 108px; width: 590px; height: 844px; border-radius: 14px; background: #121B27; border: 1px solid #263345; box-sizing: border-box; }
+  .pane { position: absolute; left: 0; top: 0; width: 590px; padding: 22px 24px; box-sizing: border-box; }
+  .pane h2 { margin: 0 0 6px; font-size: 22px; color: #fff; }
+  .pane .src { font-family: Consolas, monospace; font-size: 12.5px; color: #6FD3F0; }
+  .note { margin-top: 14px; font-size: 16px; line-height: 1.5; color: #D6DEE9; }
+  .note b { color: #FFD166; }
+  .warn { margin-top: 14px; font-size: 15px; line-height: 1.5; color: #FFE3B0; background: #3A2A10; border: 1px solid #8A6A2A; border-radius: 10px; padding: 10px 12px; }
+  .pane .code { font-size: 13px; }
+
+  /* caption */
+  #cap { left: 36px; top: 972px; width: 1848px; height: 88px; border-radius: 14px; background: #16202E; border: 1px solid #263345; box-sizing: border-box; padding: 0 26px; display: flex; align-items: center; gap: 20px; }
+  #capn { flex: none; min-width: 64px; height: 56px; border-radius: 28px; background: #4F8CFF; color: #fff; font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 16px; box-sizing: border-box; }
+  #capt { font-size: 24px; line-height: 1.3; }
+  #capt b { color: #FFD166; }
+
+  /* cards */
+  .card { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #0F1722; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .card h1 { font-size: 62px; margin: 0; }
+  .card h1 span { color: #7FB2FF; }
+  .card p { font-size: 25px; color: #B8C4D4; margin: 16px 0 0; }
+  .agenda { display: grid; grid-template-columns: repeat(4, 330px); gap: 16px; margin-top: 40px; text-align: left; }
+  .agenda div { background: #16202E; border: 1px solid #263345; border-radius: 12px; padding: 14px 18px; font-size: 20px; font-weight: 700; }
+  .agenda div b { display: block; font-size: 14px; color: #7FB2FF; font-weight: 700; margin-bottom: 2px; }
+  #chap { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: rgba(15,23,34,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #chap .no { font-size: 26px; font-weight: 800; color: #7FB2FF; letter-spacing: 3px; }
+  #chap .nm { font-size: 68px; font-weight: 800; margin-top: 8px; }
+  #chap .ds { font-size: 24px; color: #B8C4D4; margin-top: 10px; }
+  .cheat { display: grid; grid-template-columns: repeat(3, 520px); gap: 18px; margin-top: 34px; text-align: left; }
+  .cheat div { background: #16202E; border: 1px solid #263345; border-radius: 14px; padding: 16px 20px; font-size: 18px; line-height: 1.45; color: #D6DEE9; min-height: 120px; }
+  .cheat div b { display: block; font-size: 21px; color: #fff; margin-bottom: 4px; }
+  .cheat code { color: #FFD166; font-size: 15.5px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hdr" class="abs"></div>
+  <div id="title" class="abs">How to <span>query the data lake</span></div>
+  <div id="tsub" class="abs">Test account 690293068614 · example team: Analytics</div>
+  <div id="chapbar" class="abs"></div>
+
+  <!-- ===== CH1: before you start ===== -->
+  <div id="idcard" class="abs">
+    <div class="top"><div class="av">A</div><div><div class="lbl">YOUR ACCESS CARD</div><div class="h3" style="font-size:30px">Team: Analytics</div></div></div>
+    <div class="grid">
+      <div class="k" id="ic1">IAM role to assume</div><div class="val" id="iv1">arn:aws:iam::690293068614:role/mtsai-datalake-test-analytics</div>
+      <div class="k" id="ic2">Athena workgroup</div><div class="val" id="iv2">mtsai-datalake-test-analytics</div>
+      <div class="k" id="ic3">Databases you can read</div><div class="val" id="iv3"><span class="y">✓ test_curated</span> &nbsp; <span class="x">✗ test_raw</span> <span style="font-family:Segoe UI;font-size:14px;color:#9AA8BA;font-weight:400">(audit only)</span></div>
+      <div class="k" id="ic4">Your results folder</div><div class="val" id="iv4">s3://…/athena-results/analytics/ &nbsp;<span style="font-family:Segoe UI;font-size:14px;color:#9AA8BA;font-weight:400">kept 7 days</span></div>
+      <div class="k" id="ic5">Your limits</div><div class="val" id="iv5">5 GB per query · $50 per month</div>
+    </div>
+  </div>
+  <div id="teamtbl" class="box">
+    <div class="h3">Every team's card at a glance</div>
+    <table class="t">
+      <tr><th>Team</th><th>Role / workgroup name</th><th>test_curated</th><th>test_raw</th><th>Limit / query</th><th>Budget</th></tr>
+      <tr id="tr1"><td style="color:#8DB6FF;font-weight:700">Analytics</td><td class="mono">mtsai-datalake-test-analytics</td><td class="y">✓</td><td class="x">✗</td><td>5 GB</td><td>$50</td></tr>
+      <tr id="tr2"><td style="color:#7FE6E7;font-weight:700">Forecasting</td><td class="mono">mtsai-datalake-test-forecasting</td><td class="y">✓</td><td class="x">✗</td><td>5 GB</td><td>$50</td></tr>
+      <tr id="tr3"><td style="color:#FFCB6B;font-weight:700">Audit</td><td class="mono">mtsai-datalake-test-audit</td><td class="y">✓</td><td class="y">✓</td><td>10 GB</td><td>$25</td></tr>
+    </table>
+  </div>
+
+  <!-- ===== CH2: getting in ===== -->
+  <div id="optA" class="box" style="left:60px;top:120px;width:580px;height:810px">
+    <div class="h3" style="padding:16px 20px 0">Option A · AWS console</div>
+    <div id="st1" class="step" style="top:62px"><span class="n">1</span><b style="font-size:18px">Switch role</b>
+      <div class="field">690293068614 <span>Account</span></div>
+      <div class="field">mtsai-datalake-test-analytics <span>Role</span></div>
+      <div class="btn">Switch Role</div></div>
+    <div id="st2" class="step" style="top:292px"><span class="n">2</span><b style="font-size:18px">Open Athena → Query editor</b>
+      <div class="field">Region: ap-south-1 (Mumbai) <span>top-right</span></div>
+      <div class="note" style="font-size:15px;margin-top:10px">You're now working <b>as your team's role</b>, not as yourself.</div></div>
+    <div id="st3" class="step" style="top:522px"><span class="n">3</span><b style="font-size:18px">Pick your workgroup and database</b>
+      <div class="field">mtsai-datalake-test-analytics ▾ <span>Workgroup</span></div>
+      <div class="field">test_curated ▾ <span>Database</span></div></div>
+  </div>
+  <div id="optB" class="box" style="left:660px;top:120px;width:590px;height:810px;padding:16px 20px">
+    <div class="h3">Option B · command line</div>
+    <div class="lbl" style="margin-top:12px">add to ~/.aws/config (once)</div>
+    <div class="code" id="cliA" style="margin-top:6px;font-size:12.5px"><span class="id">[profile datalake-analytics]</span>
+<span class="kw">role_arn</span> = arn:aws:iam::690293068614:role/mtsai-datalake-test-analytics
+<span class="kw">source_profile</span> = default
+<span class="kw">region</span> = ap-south-1</div>
+    <div class="lbl" style="margin-top:18px">check who you are</div>
+    <div class="code" id="cliB" style="margin-top:6px">$ aws sts get-caller-identity \
+    --profile datalake-analytics
+{
+  <span class="str">"Arn"</span>: <span class="str">"arn:aws:sts::690293068614:
+    assumed-role/mtsai-datalake-test-analytics/…"</span>
+}</div>
+    <div class="note" id="cliC" style="font-size:15px">Seeing <b>assumed-role/…-analytics</b> means you're in.</div>
+  </div>
+
+  <!-- ===== CH3+4: editor ===== -->
+  <div id="editor" class="box">
+    <div id="edbar"><div class="dd">Workgroup <b>mtsai-datalake-test-analytics</b> ▾</div><div class="dd">Database <b>test_curated</b> ▾</div><div id="status"></div><div id="runbtn">▶ Run</div></div>
+    <div id="edbody"><div id="ln">1
+2
+3
+4
+5
+6</div><div id="qtext"></div></div>
+  </div>
+  <div id="r1" class="rule" style="left:60px"><div class="n">1</div><b>Right database</b><p>Pick <code>test_curated</code> (or write <code>test_curated.trip_events_curated</code>).</p></div>
+  <div id="r2" class="rule" style="left:362px"><div class="n">2</div><b>Filter on event_date</b><p>Athena then skips every file from other days, so the query is faster and cheaper.</p></div>
+  <div id="r3" class="rule" style="left:664px"><div class="n">3</div><b>Only the columns you need</b><p>Parquet stores data by column. Fewer columns means less data read. Avoid <code>SELECT *</code>.</p></div>
+  <div id="r4" class="rule" style="left:966px"><div class="n">4</div><b>LIMIT while exploring</b><p>Add <code>LIMIT 100</code> to look at rows before running the full query.</p></div>
+  <div id="cmp1" class="cmp" style="top:790px"><div class="q"><span class="x">✗</span> SELECT * FROM trip_events_curated</div><div class="bar" style="width:100%;background:#FF6B6B">reads every day × every column</div></div>
+  <div id="cmp2" class="cmp" style="top:870px"><div class="q"><span class="y">✓</span> SELECT city_code, fare_amount … WHERE event_date = DATE '2026-07-07'</div><div class="bar" style="width:16%;background:#5BE37D">one day × 2 columns</div></div>
+
+  <div id="results" class="box">
+    <div class="h3" style="font-size:18px">Results <span class="lbl">(illustrative values)</span></div>
+    <table class="t" style="font-size:16px">
+      <tr><th>city_code</th><th>trips</th><th>avg_fare</th></tr>
+      <tr><td class="mono">BLR</td><td>19</td><td>168.4</td></tr>
+      <tr><td class="mono">MUM</td><td>17</td><td>201.9</td></tr>
+      <tr><td class="mono">DEL</td><td>16</td><td>154.2</td></tr>
+      <tr><td class="mono">HYD</td><td>14</td><td>139.7</td></tr>
+      <tr><td class="mono">PUN</td><td>10</td><td>121.3</td></tr>
+    </table>
+  </div>
+  <div id="stats" class="box">
+    <div class="stat"><span>Status</span><b class="y">SUCCEEDED</b></div>
+    <div class="stat"><span>Run time</span><b>1.2 s</b></div>
+    <div class="stat"><span>Data scanned</span><b style="color:#FFD166">4.1 KB</b></div>
+  </div>
+  <div id="resfile" class="box">
+    <div class="lbl">A copy of the results is saved to</div>
+    <div class="val" style="font-size:15px;margin-top:6px">athena-results/analytics/<br>3f9a…c21e.csv</div>
+    <div class="lbl" style="margin-top:8px">only your team can list it · deleted after 7 days</div>
+  </div>
+
+  <!-- ===== CH5: cost ===== -->
+  <div id="formula" class="box">
+    <div class="lbl">HOW ATHENA CHARGES</div>
+    <div style="font-size:38px;font-weight:800;margin-top:10px">cost ≈ data scanned × <span style="color:#FFD166">$5 per TB</span></div>
+    <div style="font-size:19px;color:#B8C4D4;margin-top:8px">minimum 10 MB billed per query · approximate, check current AWS pricing</div>
+  </div>
+  <div id="ex1" class="box ex" style="left:60px"><div class="h3">Small query</div><div class="lbl">scans 4 KB, billed as the 10 MB minimum</div><div class="big">$0.00005</div><div class="gauge"><i style="width:2%;background:#5BE37D"></i></div></div>
+  <div id="ex2" class="box ex" style="left:465px"><div class="h3">1 GB scanned</div><div class="lbl">a wide query over many days</div><div class="big">$0.005</div><div class="gauge"><i style="width:20%;background:#FFD166"></i></div></div>
+  <div id="ex3" class="box ex" style="left:870px"><div class="h3">Hits the 5 GB limit</div><div class="lbl">Athena cancels it right there</div><div class="big">≤ $0.025</div><div class="gauge"><i id="g3" style="width:100%;background:#FF6B6B"></i></div><div class="x" style="margin-top:10px">✗ cancelled</div></div>
+  <div id="budget" class="box">
+    <div class="h3">Monthly budget: Analytics $50</div>
+    <div class="lbl" style="margin-top:4px">tracked across the whole team's workgroup</div>
+    <div id="bbar"><i id="bfill" style="width:0%"></i></div>
+    <div style="display:flex;justify-content:space-between;font-size:15px;color:#9AA8BA;margin-top:6px"><span>$0</span><span>$25</span><span>$50: alert</span></div>
+    <div id="mail">✉ Budget alert email sent at 100%</div>
+  </div>
+
+  <!-- ===== CH6: errors ===== -->
+  <div id="e1" class="box err" style="left:60px;top:120px"><span class="eh">Error 1</span>
+    <div class="msg">AccessDeniedException: … not authorized to perform: glue:GetDatabase on resource: …:database/test_raw</div>
+    <div class="w"><b>Why:</b> the raw zone is <b>audit only</b>.</div>
+    <div class="f">✓ Fix: query <code>test_curated</code> instead, or ask for audit access if you really need raw.</div></div>
+  <div id="e2" class="box err" style="left:665px;top:120px"><span class="eh">Error 2</span>
+    <div class="msg">AccessDeniedException: … not authorized to perform: athena:StartQueryExecution on resource: …:workgroup/primary</div>
+    <div class="w"><b>Why:</b> the <b>wrong workgroup</b> is selected (here the default "primary").</div>
+    <div class="f">✓ Fix: pick <code>mtsai-datalake-test-analytics</code> in the workgroup menu (or <code>--work-group</code> in the CLI).</div></div>
+  <div id="e3" class="box err" style="left:60px;top:535px"><span class="eh">Error 3</span>
+    <div class="msg">Query cancelled: Bytes scanned limit was exceeded</div>
+    <div class="w"><b>Why:</b> the query read more than your team's <b>per-query limit</b> (5 GB).</div>
+    <div class="f">✓ Fix: add a <code>WHERE event_date …</code> filter, pick fewer columns, and never run a bare <code>SELECT *</code>.</div></div>
+  <div id="e4" class="box err" style="left:665px;top:535px"><span class="eh">Error 4</span>
+    <div class="msg">TABLE_NOT_FOUND: Table 'awsdatacatalog.test_raw.trip_events_curated' does not exist</div>
+    <div class="w"><b>Why:</b> usually the <b>wrong database</b> is selected. A missing Glue permission can also look like this.</div>
+    <div class="f">✓ Fix: choose <code>test_curated</code>, or write the full name <code>test_curated.trip_events_curated</code>.</div></div>
+
+  <!-- ===== CH7: bonus ===== -->
+  <div id="b1" class="box" style="left:60px;top:120px;width:1190px;height:380px;padding:22px 28px">
+    <div class="h3">List every version of the table</div>
+    <div class="lbl" style="margin-top:4px">each nightly load adds a new snapshot (version)</div>
+    <div class="code" style="margin-top:14px;font-size:19px"><span class="kw">SELECT</span> committed_at, snapshot_id, operation
+<span class="kw">FROM</span> <span class="str">"trip_events_curated$snapshots"</span>
+<span class="kw">ORDER BY</span> committed_at <span class="kw">DESC</span>;</div>
+  </div>
+  <div id="b2" class="box" style="left:60px;top:530px;width:1190px;height:400px;padding:22px 28px">
+    <div class="h3">Time travel: see the table as it was</div>
+    <div class="lbl" style="margin-top:4px">reproduce exactly what a report saw on a given day (until VACUUM removes old versions)</div>
+    <div class="code" style="margin-top:14px;font-size:19px"><span class="kw">SELECT</span> count(*)
+<span class="kw">FROM</span> trip_events_curated
+<span class="kw">FOR TIMESTAMP AS OF</span> <span class="kw">TIMESTAMP</span> <span class="str">'2026-07-08 00:00:00 UTC'</span>
+<span class="kw">WHERE</span> event_date = <span class="kw">DATE</span> <span class="str">'2026-07-07'</span>;</div>
+  </div>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <div id="panel" class="abs">
+    <div id="p1" class="pane"><h2>You need three things</h2><div class="src">terraform/modules/athena-workgroup</div>
+      <div class="note">1. <b>Permission to assume</b> your team's IAM role<br>2. Your team's <b>workgroup</b> name<br>3. The <b>database</b> you're allowed to read</div>
+      <div class="note">Everyone can read <b>test_curated</b>. Only the audit team can read <b>test_raw</b>.</div>
+      <div class="warn">Don't have access yet? Ask the data platform owner to let you assume your team's role. (Who can assume each role is still being narrowed down in the Terraform.)</div></div>
+    <div id="p2" class="pane"><h2>Two ways in, same role</h2>
+      <div class="note">Both options end in the same place: you're acting <b>as your team's role</b>, inside your team's <b>workgroup</b>.</div>
+      <div class="note">• The <b>console</b> is easiest for exploring and one-off questions.<br>• The <b>command line</b> is better for scripts and repeatable jobs.</div>
+      <div class="note">The region is always <b>ap-south-1</b> (Mumbai).</div></div>
+    <div id="p3" class="pane"><h2>The example query</h2>
+      <div class="note">Trips and average fare per city for one day, from the <b>curated</b> table.</div>
+      <div class="note">The 4 rules keep queries <b>fast</b>, <b>cheap</b>, and <b>under your limit</b>.</div>
+      <div class="note">Why rule 2 works: Iceberg keeps track of which days are in which files, so a date filter lets Athena skip the other files completely.</div></div>
+    <div id="p4" class="pane"><h2>Same thing from the command line</h2>
+      <div class="code">aws athena start-query-execution \
+  --profile datalake-analytics \
+  --work-group mtsai-datalake-test-analytics \
+  --query-execution-context \
+      Database=test_curated \
+  --query-string "SELECT city_code, …"
+<span class="cm"># → returns a QueryExecutionId</span>
+
+aws athena get-query-execution \
+  --query-execution-id &lt;id&gt;
+<span class="cm"># Status + Statistics.DataScannedInBytes</span>
+
+aws athena get-query-results \
+  --query-execution-id &lt;id&gt;</div>
+      <div class="note">No output location needed: the workgroup sets it for you.</div></div>
+    <div id="p5" class="pane"><h2>Stay cheap</h2>
+      <div class="note">You pay for <b>data scanned</b>, not rows returned or time taken.</div>
+      <div class="note">• Date filters and fewer columns cut the cost the most.<br>• The per-query limit caps the worst case.<br>• The monthly budget emails the team at 100%.</div>
+      <div class="note">Check <b>Data scanned</b> after every new query to learn what's expensive.</div></div>
+    <div id="p6" class="pane"><h2>Read the error, then check</h2>
+      <div class="note">1. <b>Workgroup</b>: is it your team's?<br>2. <b>Database</b>: test_curated?<br>3. <b>Zone</b>: are you allowed to read it?<br>4. <b>Filter</b>: is there a date filter?</div>
+      <div class="note">Still stuck? Share the full error text and the <b>query ID</b> with the data platform owner.</div></div>
+    <div id="p7" class="pane"><h2>Iceberg extras</h2>
+      <div class="note">Because the lake uses <b>Iceberg</b>, every load is a version you can list and query.</div>
+      <div class="note">Old versions are removed by the weekly <b>VACUUM</b>, so time travel only reaches back as far as the versions that are still kept.</div></div>
+  </div>
+
+  <div id="cap" class="abs"><div id="capn"></div><div id="capt"></div></div>
+
+  <!-- chapter interstitial -->
+  <div id="chap"><div class="no" id="chno">CHAPTER 1</div><div class="nm" id="chnm">Before you start</div><div class="ds" id="chds"></div></div>
+
+  <div id="card-intro" class="card">
+    <h1>How to <span>query the data lake</span></h1>
+    <p>A step-by-step guide for Analytics, Forecasting and Audit</p>
+    <div class="agenda">
+      <div id="ag1"><b>CHAPTER 1</b>Before you start</div>
+      <div id="ag2"><b>CHAPTER 2</b>Getting in</div>
+      <div id="ag3"><b>CHAPTER 3</b>Write a good query</div>
+      <div id="ag4"><b>CHAPTER 4</b>Run it, read results</div>
+      <div id="ag5"><b>CHAPTER 5</b>Cost and limits</div>
+      <div id="ag6"><b>CHAPTER 6</b>When it goes wrong</div>
+      <div id="ag7"><b>CHAPTER 7</b>Bonus + cheat sheet</div>
+    </div>
+  </div>
+  <div id="card-end" class="card">
+    <h1>Cheat sheet</h1>
+    <div class="cheat">
+      <div><b>1 · Assume your role</b><code>mtsai-datalake-test-&lt;team&gt;</code><br>console: Switch role · CLI: a profile with role_arn</div>
+      <div><b>2 · Pick your workgroup</b><code>mtsai-datalake-test-&lt;team&gt;</code><br>never "primary"</div>
+      <div><b>3 · Pick the database</b><code>test_curated</code> for everyone<br><code>test_raw</code> for audit only</div>
+      <div><b>4 · Write it well</b>filter <code>event_date</code>, name your columns, <code>LIMIT</code> while exploring</div>
+      <div><b>5 · Check the cost</b>look at <b style="display:inline;font-size:18px;color:#FFD166">Data scanned</b>, about $5 per TB, cancelled at your limit</div>
+      <div><b>6 · Stuck?</b>Check workgroup → database → zone → filter, then share the query ID</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x,a=0,b=1) => Math.max(a, Math.min(b, x));
+const ease = x => x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+const prog = (t,a,b) => clamp((t-a)/(b-a));
+function vis(el,o){ el.style.opacity=o; el.style.visibility=o>0.001?'visible':'hidden'; }
+function fade(id,t,a,b,d=0.5){ const el=$(id); let o=0; if(t>=a&&t<b) o=Math.min(prog(t,a,a+d),1-prog(t,b-d,b)); vis(el,o); }
+const glow=(id,on)=>$(id).classList.toggle('glow',!!on);
+
+const T_END = 158;
+const CH = [
+  {s:8,   e:24,  nm:'Before you start',   ds:'what you need, and what your team can see'},
+  {s:24,  e:46,  nm:'Getting in',          ds:'the AWS console, or the command line'},
+  {s:46,  e:72,  nm:'Write a good query',  ds:'four rules that keep queries fast and cheap'},
+  {s:72,  e:94,  nm:'Run it, read results',ds:'status, rows, data scanned, saved results'},
+  {s:94,  e:112, nm:'Cost and limits',     ds:'what a query costs and what stops it'},
+  {s:112, e:136, nm:'When it goes wrong',  ds:'the four common errors and how to fix them'},
+  {s:136, e:146, nm:'Bonus + cheat sheet', ds:'Iceberg versions, time travel, one-page summary'},
+];
+const CARD = 2.3;   // chapter title card length
+
+// chapter bar
+const bar = $('chapbar');
+CH.forEach((c,i)=>{ const d=document.createElement('div'); d.className='seg'; d.id='seg'+i;
+  d.innerHTML=`<i></i><span><b>${i+1}</b>${c.nm}</span>`; bar.appendChild(d); });
+
+const QUERY = [
+  'SELECT city_code,',
+  '       count(*)                  AS trips,',
+  '       round(avg(fare_amount), 1) AS avg_fare',
+  'FROM   trip_events_curated',
+  "WHERE  event_date = DATE '2026-07-07'",
+  'GROUP BY city_code ORDER BY trips DESC;'
+].join('\n');
+
+const caps = [
+  [0,8,'',''],
+  [10.3,16,'1','Your <b>access card</b>: the role to assume, the workgroup to use, and what you can read.'],
+  [16,24,'1','Each team has its <b>own role and workgroup</b>. Only <b>audit</b> can read <b>test_raw</b>.'],
+  [26.3,36,'2','<b>Console</b>: switch role → open Athena → pick your <b>workgroup</b> and <b>database</b>.'],
+  [36,46,'2','<b>Command line</b>: a profile that assumes the same role. Check it with <b>get-caller-identity</b>.'],
+  [48.3,57,'3','Here\'s the example query: trips and average fare per city for <b>one day</b>.'],
+  [57,65,'3','Four rules: <b>right database</b>, <b>filter the date</b>, <b>only needed columns</b>, <b>LIMIT</b> while exploring.'],
+  [65,72,'3','A filtered query reads a <b>tiny fraction</b> of what <b>SELECT *</b> reads.'],
+  [74.3,81,'4','Press <b>Run</b>: QUEUED → RUNNING → <b>SUCCEEDED</b>, then the rows appear.'],
+  [81,94,'4','Always check <b>Data scanned</b>. Results are also saved in your team\'s folder for <b>7 days</b>.'],
+  [96.3,104,'5','You pay for <b>data scanned</b>: about <b>$5 per TB</b>, 10 MB minimum per query.'],
+  [104,112,'5','A query past the limit is <b>cancelled</b>. The monthly budget sends an <b>email alert</b>.'],
+  [114.3,119.5,'6','<b>AccessDenied on test_raw</b>: raw is audit-only. Use test_curated.'],
+  [119.5,124.5,'6','<b>Not authorized on workgroup</b>: you picked the wrong workgroup.'],
+  [124.5,129.5,'6','<b>Bytes scanned limit exceeded</b>: add a date filter and fewer columns.'],
+  [129.5,136,'6','<b>TABLE_NOT_FOUND</b>: usually the wrong database is selected.'],
+  [138.3,146,'7','Iceberg bonus: list <b>every version</b> of a table, and <b>time travel</b> to an earlier one.'],
+  [146,158,'✓','The whole guide on one page. <b>Pause here</b> and keep it handy.'],
+];
+
+function render(t) {
+  // chapter bar state
+  CH.forEach((c,i)=>{ const s=$('seg'+i); const on=t>=c.s&&t<c.e; s.classList.toggle('on',on); s.classList.toggle('done',t>=c.e);
+    s.querySelector('i').style.width = (100*prog(t,c.s,c.e))+'%'; });
+
+  fade('card-intro',t,-1,8.2,0.7);
+  for (let i=1;i<=7;i++) fade('ag'+i,t,1.2+i*0.7,8.2,0.4);
+  fade('card-end',t,146,999,0.8);
+
+  // chapter interstitial
+  const ci = CH.findIndex(c=>t>=c.s&&t<c.s+CARD);
+  if (ci>=0) { $('chno').textContent='CHAPTER '+(ci+1); $('chnm').textContent=CH[ci].nm; $('chds').textContent=CH[ci].ds;
+    const c=CH[ci]; vis($('chap'), Math.min(prog(t,c.s,c.s+.4), 1-prog(t,c.s+CARD-.4,c.s+CARD))); }
+  else vis($('chap'),0);
+
+  // caption
+  const c = caps.find(c=>t>=c[0]&&t<c[1]);
+  $('capn').textContent = c? c[2] : ''; $('capn').style.visibility = (c&&c[2])?'visible':'hidden';
+  $('capt').innerHTML = c? c[3] : ''; $('capt').style.opacity = c? Math.min(1,prog(t,c[0],c[0]+.4)) : 0;
+
+  // CH1
+  fade('idcard',t,8,24.2); fade('teamtbl',t,8,24.2);
+  for (let i=1;i<=5;i++){ const on = t>=10.6+i*1.0 && t<11.6+i*1.0; glow('iv'+i,false); $('iv'+i).style.color = on? '#FFD166':''; }
+  glow('teamtbl', t>=16&&t<24); glow('idcard', t>=10.3&&t<12);
+  ['tr1','tr2','tr3'].forEach((id,i)=>{ $(id).style.background = (t>=17+i*2&&t<19+i*2)?'rgba(79,140,255,.14)':''; });
+
+  // CH2
+  fade('optA',t,24,46.2); fade('optB',t,24,46.2);
+  [['st1',27,30],['st2',30,33],['st3',33,36]].forEach(([id,a,b])=>{ $(id).classList.toggle('on',t>=a); glow(id,t>=a&&t<b); });
+  glow('optB', t>=36&&t<46); glow('cliA', t>=37&&t<40.5); glow('cliB', t>=40.5&&t<45);
+  fade('cliC',t,42,46.2,.3);
+
+  // CH3+CH4 editor
+  fade('editor',t,46,94.2);
+  const n = Math.floor(QUERY.length*prog(t,48.6,56));
+  const typed = QUERY.slice(0,n).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const caretOn = (t<57) && (Math.floor(t*2)%2===0 || t<56);
+  $('qtext').innerHTML = typed + (t>=48.3 && t<57 && caretOn ? '<span class="caret"></span>' : '');
+  if (t>=56) $('qtext').innerHTML = hl(QUERY);
+  [['r1',57.2],['r2',58.8],['r3',60.4],['r4',62]].forEach(([id,a])=>fade(id,t,a,72,.4));
+  glow('r2', t>=65&&t<72); fade('cmp1',t,65.3,72,.4); fade('cmp2',t,66.8,72,.4);
+  // run
+  $('runbtn').classList.toggle('press', t>=74.5&&t<75.1);
+  const st = $('status');
+  if (t<74.6 || t>=94) { st.textContent=''; st.style.background='transparent'; }
+  else if (t<75.6) { st.textContent='QUEUED'; st.style.background='#3A4A60'; st.style.color='#fff'; }
+  else if (t<77.4) { st.textContent='RUNNING'; st.style.background='#1F3A66'; st.style.color='#BFD7FF'; }
+  else { st.textContent='✓ SUCCEEDED'; st.style.background='#1E5E33'; st.style.color='#B8F5C8'; }
+  fade('results',t,77.8,94.2,.4); fade('stats',t,79,94.2,.4); fade('resfile',t,84,94.2,.4);
+  glow('stats', t>=81&&t<84); glow('resfile', t>=84.5&&t<88);
+
+  // CH5
+  fade('formula',t,94,112.2); fade('ex1',t,97.5,112.2,.4); fade('ex2',t,99,112.2,.4); fade('ex3',t,100.5,112.2,.4);
+  $('g3').style.width = (100*ease(prog(t,101,103)))+'%';
+  fade('budget',t,103.8,112.2,.4);
+  $('bfill').style.width = (100*ease(prog(t,104.5,108.5)))+'%';
+  fade('mail',t,108.6,112.2,.3);
+
+  // CH6
+  [['e1',114.3],['e2',119.5],['e3',124.5],['e4',129.5]].forEach(([id,a])=>{ fade(id,t,a,136.2,.4); glow(id, t>=a&&t<a+5); });
+
+  // CH7
+  fade('b1',t,138.3,146.2,.4); fade('b2',t,141.5,146.2,.4);
+
+  // panel
+  fade('p1',t,10.3,24); fade('p2',t,26.3,46); fade('p3',t,48.3,72); fade('p4',t,74.3,94);
+  fade('p5',t,96.3,112); fade('p6',t,114.3,136); fade('p7',t,138.3,146);
+}
+function hl(q){
+  return q.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|AS|DESC|DATE)\b/g,'<span class="kw">$1</span>')
+    .replace(/'([^']*)'/g,'<span class="str">\'$1\'</span>')
+    .replace(/\b(count|round|avg)\b/g,'<span class="id">$1</span>');
+}
+window.render = render; window.T_END = T_END;
+if (!location.search.includes('capture')) {
+  const start = performance.now();
+  (function loop(){ render(((performance.now()-start)/1000) % T_END); requestAnimationFrame(loop); })();
+} else { render(0); }
+</script>
+</body>
+</html>

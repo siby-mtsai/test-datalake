@@ -5,7 +5,7 @@ narration.json, the clips are mixed into one track, and that track is muxed into
 The video stream is copied untouched.
 
     powershell -File docs/video/make_narration.ps1 -OutDir <clips>
-    videnv/Scripts/python docs/video/add_narration.py <clips>
+    videnv/Scripts/python docs/video/add_narration.py <clips> [video.mp4] [narration.json]
 """
 import json
 import pathlib
@@ -15,19 +15,20 @@ import sys
 import imageio_ffmpeg
 
 HERE = pathlib.Path(__file__).resolve().parent
-VIDEO = HERE / "MTSAi-Data-Lake-Pipeline.mp4"
 
 
-def video_duration(ffmpeg: str) -> float:
+def video_duration(ffmpeg: str, video: pathlib.Path) -> float:
     """Seconds, parsed from ffmpeg's "Duration: HH:MM:SS.ss" banner line."""
-    info = subprocess.run([ffmpeg, "-i", str(VIDEO)], capture_output=True, text=True).stderr
+    info = subprocess.run([ffmpeg, "-i", str(video)], capture_output=True, text=True).stderr
     h, m, s = info.split("Duration: ")[1].split(",")[0].split(":")
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
 def main() -> None:
     clips = pathlib.Path(sys.argv[1])
-    lines = json.loads((HERE / "narration.json").read_text(encoding="utf-8"))
+    VIDEO = HERE / (sys.argv[2] if len(sys.argv) > 2 else "MTSAi-Data-Lake-Pipeline.mp4")
+    narration = sys.argv[3] if len(sys.argv) > 3 else "narration.json"
+    lines = json.loads((HERE / narration).read_text(encoding="utf-8"))
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
 
     cmd = [ffmpeg, "-y", "-loglevel", "error", "-i", str(VIDEO)]
@@ -39,7 +40,7 @@ def main() -> None:
         labels.append(f"[a{i}]")
     # normalize=0 keeps each voice clip at full volume (the clips never overlap). Pad to exactly
     # the video's length: an unbounded apad + -shortest with a copied video stream hangs ffmpeg.
-    duration = video_duration(ffmpeg)
+    duration = video_duration(ffmpeg, VIDEO)
     filters.append(f"{''.join(labels)}amix=inputs={len(lines)}:normalize=0,"
                    f"apad=whole_dur={duration},atrim=0:{duration}[aout]")
 

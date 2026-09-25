@@ -1,11 +1,12 @@
 # Generates one WAV per narration line (docs/video/narration.json) with the built-in Windows
 # speech engine, speeding a line up only if it would overrun its scene. Prints each clip's
 # length so docs/video/add_narration.py can place them on the video's timeline.
-#   powershell -File docs/video/make_narration.ps1 -OutDir <folder>
-param([Parameter(Mandatory)] [string]$OutDir, [string]$Voice = "Microsoft Zira Desktop")
+#   powershell -File docs/video/make_narration.ps1 -OutDir <folder> [-Narration access-narration.json]
+param([Parameter(Mandatory)] [string]$OutDir, [string]$Narration = "narration.json",
+      [string]$Voice = "Microsoft Zira Desktop")
 
 Add-Type -AssemblyName System.Speech
-$lines = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot "narration.json") | ConvertFrom-Json
+$lines = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot $Narration) | ConvertFrom-Json
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 function Get-WavSeconds([string]$path) {

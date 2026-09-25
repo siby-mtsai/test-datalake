@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/video/MTSAi-Data-Lake-Build-and-Data-Shapes.mp4: how the platform is built
+  (Terraform + Go) and what one row looks like at every service it passes through.
+  window.render(t) draws the frame at t seconds (see render_video.py).
+  Facts: terraform/ (bootstrap, envs/test, modules/*), .github/workflows/deploy*.yaml,
+  export/ (cmd/*, internal/*, Dockerfile, tables.yaml). The tracked row's values (trip 2304) are
+  illustrative; 76 rows / checksum 177962 for 2026-07-07 are from the real Test run.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Platform Build and Data Shapes</title>
+<style>
+  html, body { margin: 0; background: #0F1722; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0F1722; font-family: "Segoe UI", Arial, sans-serif; color: #E8EDF3; }
+  .abs { position: absolute; }
+  code, .mono { font-family: Consolas, monospace; }
+  #hdr { left: 0; top: 0; width: 1920px; height: 84px; background: #16202E; border-bottom: 1px solid #263345; }
+  #title { left: 36px; top: 12px; font-size: 24px; font-weight: 800; }
+  #title span { color: #7FB2FF; }
+  #tsub { left: 36px; top: 48px; font-size: 13px; color: #9AA8BA; }
+  #chapbar { left: 520px; top: 16px; width: 1364px; height: 52px; display: flex; gap: 6px; }
+  .seg { flex: 1; position: relative; border-radius: 8px; background: #0F1722; border: 1px solid #263345; overflow: hidden; }
+  .seg i { position: absolute; left: 0; top: 0; bottom: 0; background: #1F3A66; }
+  .seg span { position: absolute; left: 10px; top: 8px; right: 6px; font-size: 13px; font-weight: 700; color: #9AA8BA; white-space: nowrap; line-height: 1.15; }
+  .seg span b { display: block; font-size: 11px; font-weight: 600; opacity: .8; }
+  .seg.on { border-color: #4F8CFF; box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
+  .seg.on span { color: #fff; } .seg.done span { color: #C9D4E2; }
+  .seg.partb i { background: #1E4A33; } .seg.partb.on { border-color: #5BE37D; box-shadow: 0 0 0 2px rgba(91,227,125,.3); }
+
+  .box { position: absolute; background: #16202E; border: 1px solid #263345; border-radius: 14px; box-sizing: border-box; }
+  .h3 { font-size: 20px; font-weight: 800; }
+  .lbl { font-size: 13px; color: #9AA8BA; }
+  .glow { box-shadow: 0 0 0 3px rgba(255,209,102,.55), 0 0 24px rgba(255,209,102,.35) !important; border-color: #FFD166 !important; }
+  .code { background: #0B1119; border: 1px solid #243244; border-radius: 10px; padding: 12px 16px; font-family: Consolas, monospace; font-size: 15px; line-height: 1.55; white-space: pre; color: #D6DEE9; }
+  .kw { color: #FF7AB6; } .str { color: #9BE38F; } .cm { color: #6C7D93; } .num { color: #FFD166; } .id { color: #7FC8FF; } .ty { color: #C8A2FF; }
+
+  /* big picture lanes */
+  .lane { position: absolute; left: 60px; width: 1190px; height: 230px; border-radius: 14px; border: 1px dashed #33445C; }
+  .lane .lt { position: absolute; left: 16px; top: 10px; font-size: 14px; font-weight: 800; letter-spacing: 1px; }
+  .node { position: absolute; top: 52px; width: 196px; height: 150px; border-radius: 12px; border: 2px solid; background: #16202E; box-sizing: border-box; padding: 12px 14px; }
+  .node .n { font-size: 17px; font-weight: 800; }
+  .node .s { font-size: 13px; color: #9AA8BA; margin-top: 4px; line-height: 1.35; }
+  .arr { position: absolute; top: 118px; font-size: 26px; color: #6C7D93; }
+
+  /* terraform */
+  #tree { left: 60px; top: 120px; width: 380px; height: 810px; padding: 18px 20px; }
+  .tline { font-family: Consolas, monospace; font-size: 15.5px; line-height: 1.9; white-space: pre; color: #C9D4E2; }
+  .tline.on { color: #FFD166; font-weight: 700; }
+  .mod { position: absolute; width: 385px; height: 250px; border-radius: 12px; border: 2px solid #5B6B85; background: #16202E; box-sizing: border-box; padding: 14px 16px; }
+  .mod .n { font-family: Consolas, monospace; font-size: 17px; font-weight: 800; color: #fff; }
+  .mod .c { float: right; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: #243244; color: #BFD7FF; }
+  .mod ul { margin: 10px 0 0; padding-left: 18px; font-size: 14.5px; line-height: 1.55; color: #C9D4E2; }
+
+  /* deploy pipeline */
+  .pst { position: absolute; width: 220px; height: 170px; border-radius: 12px; border: 2px solid #3A4A60; background: #16202E; box-sizing: border-box; padding: 12px 14px; }
+  .pst .n { font-size: 17px; font-weight: 800; }
+  .pst .s { font-size: 13px; color: #9AA8BA; margin-top: 5px; line-height: 1.4; }
+  .pst.pass { border-color: #5BE37D; }
+  .tfstep { display: inline-block; margin: 6px 6px 0 0; padding: 4px 10px; border-radius: 8px; background: #243244; font-family: Consolas, monospace; font-size: 14px; }
+  .tfstep.on { background: #1E5E33; color: #B8F5C8; }
+
+  /* go */
+  .pkg { position: absolute; width: 230px; height: 64px; border-radius: 10px; border: 2px solid; background: #16202E; box-sizing: border-box; padding: 8px 12px; }
+  .pkg .n { font-family: Consolas, monospace; font-size: 15px; font-weight: 800; }
+  .pkg .s { font-size: 12px; color: #9AA8BA; margin-top: 2px; }
+
+  /* row journey strip */
+  #strip { left: 60px; top: 104px; width: 1190px; height: 96px; }
+  .stop { position: absolute; top: 0; width: 100px; height: 96px; text-align: center; }
+  .stop .dot { width: 44px; height: 44px; margin: 0 auto; border-radius: 50%; border: 2px solid #3A4A60; background: #16202E; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #9AA8BA; }
+  .stop .t { font-size: 12px; color: #9AA8BA; margin-top: 6px; line-height: 1.2; }
+  .stop.done .dot { border-color: #2E9E4F; background: #173323; color: #B8F5C8; }
+  .stop.on .dot { border-color: #FFD166; background: #3A2E10; color: #FFD166; box-shadow: 0 0 18px rgba(255,209,102,.5); }
+  .stop.on .t { color: #fff; font-weight: 700; }
+  #stripline { left: 110px; top: 126px; width: 1090px; height: 3px; background: #2A3A50; }
+  #stripfill { left: 110px; top: 126px; height: 3px; background: #2E9E4F; }
+
+  .shape { position: absolute; left: 60px; top: 222px; width: 1190px; height: 708px; padding: 22px 26px; }
+  .shape .hd { display: flex; align-items: baseline; gap: 14px; }
+  .shape .svc { font-size: 26px; font-weight: 800; }
+  .shape .form { font-size: 16px; color: #9AA8BA; }
+  .shape .by { margin-left: auto; font-size: 13px; padding: 4px 10px; border-radius: 10px; font-weight: 800; }
+  table.row { border-collapse: collapse; margin-top: 18px; font-size: 16px; width: 100%; }
+  table.row th { text-align: left; padding: 8px 10px; background: #1C2838; color: #BFD7FF; font-weight: 700; font-family: Consolas, monospace; font-size: 15px; }
+  table.row td { padding: 9px 10px; border-bottom: 1px solid #1C2838; font-family: Consolas, monospace; }
+  table.row tr.me td { background: rgba(255,209,102,.13); color: #FFE7A8; }
+  table.row .tyr td { color: #C8A2FF; font-size: 13.5px; background: #121B27; }
+  .cols { display: flex; gap: 10px; margin-top: 18px; }
+  .col { flex: 1; border-radius: 10px; border: 1px solid #2A3A50; background: #0B1119; overflow: hidden; }
+  .col .ch { background: #1C2838; padding: 7px 8px; font-family: Consolas, monospace; font-size: 13px; font-weight: 800; color: #BFD7FF; }
+  .col .ct { padding: 3px 8px; font-size: 11.5px; color: #C8A2FF; border-bottom: 1px solid #1C2838; }
+  .col .cv { padding: 6px 8px; font-family: Consolas, monospace; font-size: 14px; border-bottom: 1px solid #141E2B; color: #D6DEE9; }
+  .col .cv.me { background: rgba(255,209,102,.15); color: #FFE7A8; }
+  .pill { display: inline-block; padding: 4px 12px; border-radius: 14px; font-size: 14px; font-weight: 700; margin: 10px 8px 0 0; }
+  .kv2 { display: grid; grid-template-columns: 220px 1fr; row-gap: 10px; margin-top: 18px; font-size: 16px; }
+  .kv2 .k { color: #9AA8BA; } .kv2 .v { font-family: Consolas, monospace; color: #E8EDF3; }
+
+  #panel { left: 1300px; top: 108px; width: 590px; height: 844px; border-radius: 14px; background: #121B27; border: 1px solid #263345; box-sizing: border-box; }
+  .pane { position: absolute; left: 0; top: 0; width: 590px; padding: 22px 24px; box-sizing: border-box; }
+  .pane h2 { margin: 0 0 6px; font-size: 22px; color: #fff; }
+  .pane .src { font-family: Consolas, monospace; font-size: 12.5px; color: #6FD3F0; }
+  .note { margin-top: 14px; font-size: 16px; line-height: 1.5; color: #D6DEE9; }
+  .note b { color: #FFD166; }
+  .chg { margin-top: 14px; font-size: 15.5px; line-height: 1.5; color: #D6DEE9; background: #10261A; border: 1px solid #2E6B45; border-radius: 10px; padding: 10px 12px; }
+  .chg b { color: #9FE6A0; }
+  .pane .code { font-size: 13px; }
+
+  #cap { left: 36px; top: 972px; width: 1848px; height: 88px; border-radius: 14px; background: #16202E; border: 1px solid #263345; box-sizing: border-box; padding: 0 26px; display: flex; align-items: center; gap: 20px; }
+  #capn { flex: none; min-width: 64px; height: 56px; border-radius: 28px; background: #4F8CFF; color: #fff; font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 16px; box-sizing: border-box; }
+  #capt { font-size: 24px; line-height: 1.3; }
+  #capt b { color: #FFD166; }
+
+  .card { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #0F1722; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .card h1 { font-size: 58px; margin: 0; }
+  .card h1 span { color: #7FB2FF; }
+  .card p { font-size: 24px; color: #B8C4D4; margin: 14px 0 0; }
+  .agenda { display: grid; grid-template-columns: repeat(2, 560px); gap: 16px 40px; margin-top: 36px; text-align: left; }
+  .agenda .part { grid-column: span 1; font-size: 16px; font-weight: 800; letter-spacing: 2px; color: #7FB2FF; margin-bottom: -6px; }
+  .agenda .it { background: #16202E; border: 1px solid #263345; border-radius: 12px; padding: 12px 18px; font-size: 20px; font-weight: 700; }
+  .agenda .it b { color: #7FB2FF; margin-right: 8px; }
+  #chap { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: rgba(15,23,34,.93); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #chap .pt { font-size: 18px; font-weight: 800; letter-spacing: 3px; color: #9AA8BA; }
+  #chap .no { font-size: 26px; font-weight: 800; color: #7FB2FF; letter-spacing: 3px; margin-top: 8px; }
+  #chap .nm { font-size: 66px; font-weight: 800; margin-top: 8px; }
+  #chap .ds { font-size: 24px; color: #B8C4D4; margin-top: 10px; }
+  table.sum { margin-top: 30px; border-collapse: separate; border-spacing: 0; background: #16202E; border: 1px solid #263345; border-radius: 14px; overflow: hidden; text-align: left; font-size: 17.5px; }
+  table.sum th { background: #1C2838; color: #B8C4D4; padding: 11px 18px; }
+  table.sum td { padding: 9px 18px; border-top: 1px solid #263345; }
+  table.sum td:nth-child(2) { font-family: Consolas, monospace; font-size: 15.5px; color: #FFE7A8; }
+
+  /* ===== Part B: big infrastructure map ===== */
+  .mnode { position: absolute; border: 2px solid; border-radius: 12px; background: #16202E; box-sizing: border-box; padding: 8px 12px; }
+  .mnode .n { font-size: 15.5px; font-weight: 800; }
+  .mnode .s { font-size: 12px; color: #9AA8BA; margin-top: 2px; line-height: 1.35; }
+  .slot { position: absolute; width: 188px; height: 92px; border-radius: 8px; border: 1px solid #3A4A60; background: #0F1722; font-size: 13px; font-weight: 700; padding: 8px 10px; box-sizing: border-box; color: #C9D4E2; }
+  .slot span { font-family: Consolas, monospace; font-size: 11.5px; color: #9AA8BA; font-weight: 400; }
+  .gent { margin-top: 10px; border: 1px solid #6A2A48; border-radius: 8px; padding: 7px 10px; font-family: Consolas, monospace; font-size: 13px; color: #FFC9DD; background: #1F0F18; white-space: pre; }
+  .gent b { color: #FFD166; }
+  .mfold { position: absolute; left: 800px; width: 434px; height: 30px; border-radius: 7px; background: #16261A; border: 1px solid #2E4A2A; font-family: Consolas, monospace; font-size: 13.5px; color: #CFE8C3; padding: 5px 10px; box-sizing: border-box; white-space: pre; }
+  .mfold span { color: #7FC8FF; font-size: 11px; }
+  .mfold.hot { background: #2F4A22; border-color: #7BD35A; color: #fff; }
+  .mfile { position: absolute; font-family: Consolas, monospace; font-size: 12px; padding: 3px 9px; border-radius: 5px; white-space: nowrap; }
+  .f-pq2 { background: #214A2A; border: 1px solid #5FBF6A; color: #D8F5DA; } .f-meta2 { background: #3A2440; border: 1px solid #C27BD9; color: #F2DDF8; }
+  .f-json2 { background: #4A3A14; border: 1px solid #E0B34A; color: #FFF0C8; } .f-tmp2 { background: #2A2F36; border: 1px dashed #8A96A6; color: #DDE3EA; }
+  #pkt { position: absolute; transform: translate(-50%,-50%); display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 22px; font-weight: 800; font-size: 15px; box-shadow: 0 0 26px rgba(255,209,102,.6); border: 2px solid #fff; white-space: nowrap; z-index: 5; }
+  #pkt-n { width: 26px; height: 26px; border-radius: 50%; background: #0F1722; color: #FFD166; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .insp .ih { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 12px; color: #fff; }
+  .ib { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 900; }
+  .insp .src { margin-top: 6px; }
+  table.it { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 15px; }
+  table.it th { text-align: left; color: #9AA8BA; font-weight: 600; padding: 6px; border-bottom: 1px solid #2A3A50; font-size: 13px; }
+  table.it td { padding: 7px 6px; border-bottom: 1px solid #1C2838; font-family: Consolas, monospace; }
+  table.it td.ty { color: #C8A2FF; } table.it td.hi { color: #FFD166; font-weight: 700; }
+  table.it tr.hot td { background: rgba(255,209,102,.13); }
+  .kv3 { display: grid; grid-template-columns: 110px 1fr; row-gap: 10px; margin-top: 16px; font-size: 15px; }
+  .kv3 div:nth-child(odd) { color: #9AA8BA; } .kv3 div:nth-child(even) { font-family: Consolas, monospace; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hdr" class="abs"></div>
+  <div id="title" class="abs">Platform <span>build</span> + <span>data shapes</span></div>
+  <div id="tsub" class="abs">Terraform + Go · Test account 690293068614 · tracked row: trip 2304 on 2026-07-07</div>
+  <div id="chapbar" class="abs"></div>
+
+  <!-- ===== CH1 big picture ===== -->
+  <div id="c1">
+    <div id="lane1" class="lane" style="top:118px;border-color:#5B6B85"><div class="lt" style="color:#BFD7FF">INFRASTRUCTURE · TERRAFORM</div>
+      <div id="n11" class="node" style="left:20px;border-color:#7D8998"><div class="n">bootstrap/</div><div class="s">state bucket + lock table, applied once</div></div>
+      <div class="arr" style="left:222px">→</div>
+      <div id="n12" class="node" style="left:252px;border-color:#B794FF"><div class="n">GitHub Actions</div><div class="s">Terraform Deploy workflow, logs in to AWS with OIDC</div></div>
+      <div class="arr" style="left:454px">→</div>
+      <div id="n13" class="node" style="left:484px;border-color:#7FB2FF"><div class="n">envs/test</div><div class="s">main.tf wires the modules together</div></div>
+      <div class="arr" style="left:686px">→</div>
+      <div id="n14" class="node" style="left:716px;border-color:#7FB2FF"><div class="n">6 modules</div><div class="s">bucket · catalog · workgroups · export-task · dashboard · api-sim</div></div>
+      <div class="arr" style="left:918px">→</div>
+      <div id="n15" class="node" style="left:948px;border-color:#FF9900"><div class="n">AWS resources</div><div class="s">S3, KMS, Glue, Athena, IAM, ECR, ECS, Scheduler, SNS, RDS</div></div>
+    </div>
+    <div id="lane2" class="lane" style="top:372px;border-color:#3A6B8A"><div class="lt" style="color:#7FE0F5">APPLICATION · GO</div>
+      <div id="n21" class="node" style="left:20px;border-color:#00ADD8"><div class="n">export/</div><div class="s">Go module mtsai-datalake-export: 5 commands</div></div>
+      <div class="arr" style="left:222px">→</div>
+      <div id="n22" class="node" style="left:252px;border-color:#2496ED"><div class="n">Docker image</div><div class="s">ARM64, distroless, 5 binaries + tables.yaml</div></div>
+      <div class="arr" style="left:454px">→</div>
+      <div id="n23" class="node" style="left:484px;border-color:#FF9900"><div class="n">ECR repo</div><div class="s">mtsai-datalake-test-export (made by Terraform)</div></div>
+      <div class="arr" style="left:686px">→</div>
+      <div id="n24" class="node" style="left:716px;border-color:#ED7100"><div class="n">ECS Fargate</div><div class="s">5 task definitions, one per command</div></div>
+      <div class="arr" style="left:918px">→</div>
+      <div id="n25" class="node" style="left:948px;border-color:#E7157B"><div class="n">Scheduler</div><div class="s">starts them on a timer: 07:00, 07:20, weekly</div></div>
+    </div>
+    <div id="lane3" class="lane" style="top:626px;height:300px;border-color:#2E6B45"><div class="lt" style="color:#9FE6A0">DATA · WHAT PART B FOLLOWS</div>
+      <div id="n31" class="node" style="left:20px;border-color:#4B7BEC"><div class="n">Postgres</div><div class="s">source rows</div></div>
+      <div class="arr" style="left:222px">→</div>
+      <div id="n32" class="node" style="left:252px;border-color:#00ADD8"><div class="n">Go job</div><div class="s">rows in memory → Parquet</div></div>
+      <div class="arr" style="left:454px">→</div>
+      <div id="n33" class="node" style="left:484px;border-color:#3F8624"><div class="n">S3</div><div class="s">staging file, then Iceberg files</div></div>
+      <div class="arr" style="left:686px">→</div>
+      <div id="n34" class="node" style="left:716px;border-color:#8C4FFF"><div class="n">Athena + Glue</div><div class="s">commit, check, copy to curated</div></div>
+      <div class="arr" style="left:918px">→</div>
+      <div id="n35" class="node" style="left:948px;border-color:#F5A623"><div class="n">Teams</div><div class="s">query curated with SQL</div></div>
+    </div>
+  </div>
+
+  <!-- ===== CH2 terraform ===== -->
+  <div id="c2">
+    <div id="tree" class="box">
+      <div class="h3">The Terraform layout</div>
+      <div class="lbl" style="margin-top:4px">resource blocks per folder</div>
+      <div style="margin-top:14px">
+        <div class="tline" id="tl0">bootstrap/                   <span class="num">5</span></div>
+        <div class="tline" id="tl1">terraform/</div>
+        <div class="tline" id="tl2">├─ envs/</div>
+        <div class="tline" id="tl3">│  ├─ test/main.tf   ← applied</div>
+        <div class="tline" id="tl4">│  └─ dev/main.tf    (reference)</div>
+        <div class="tline" id="tl5">└─ modules/</div>
+        <div class="tline" id="tl6">   ├─ lake-bucket        <span class="num">13</span></div>
+        <div class="tline" id="tl7">   ├─ glue-catalog        <span class="num">2</span></div>
+        <div class="tline" id="tl8">   ├─ athena-workgroup    <span class="num">4</span></div>
+        <div class="tline" id="tl9">   ├─ export-task        <span class="num">29</span></div>
+        <div class="tline" id="tl10">   ├─ cost-dashboard      <span class="num">1</span></div>
+        <div class="tline" id="tl11">   └─ mtsai-api-sim       <span class="num">9</span></div>
+      </div>
+      <div class="lbl" style="margin-top:18px">athena-workgroup's 4 blocks are repeated for each of the 3 teams (for_each).</div>
+    </div>
+    <div id="m1" class="mod" style="left:465px;top:120px"><span class="c">13</span><div class="n">lake-bucket</div><ul><li>KMS key (customer-managed)</li><li>S3 lake bucket: versioning, SSE-KMS, block public access</li><li>lifecycle: tiering 30 d, Glacier 365 d, results 7 d</li><li>separate access-logs bucket</li></ul></div>
+    <div id="m2" class="mod" style="left:865px;top:120px"><span class="c">2</span><div class="n">glue-catalog</div><ul><li>Glue database <b>test_raw</b></li><li>Glue database <b>test_curated</b></li><li>tables are made by Athena SQL, not Terraform</li></ul></div>
+    <div id="m3" class="mod" style="left:465px;top:400px"><span class="c">4 × 3</span><div class="n">athena-workgroup</div><ul><li>workgroup per team, settings enforced</li><li>IAM role per team (zone-scoped)</li><li>scan limit per query</li><li>monthly budget alert</li></ul></div>
+    <div id="m4" class="mod" style="left:865px;top:400px"><span class="c">29</span><div class="n">export-task</div><ul><li>ECR repo + ECS cluster + 5 task definitions</li><li>task, execution and scheduler IAM roles</li><li>pipeline workgroup · 4 schedules</li><li>SNS alarm on task failure · security group</li></ul></div>
+    <div id="m5" class="mod" style="left:465px;top:680px;height:250px"><span class="c">1</span><div class="n">cost-dashboard</div><ul><li>CloudWatch dashboard: S3 storage by prefix, Athena scanned per workgroup, Fargate minutes</li></ul></div>
+    <div id="m6" class="mod" style="left:865px;top:680px;height:250px"><span class="c">9</span><div class="n">mtsai-api-sim</div><ul><li>RDS Postgres: stand-in source database</li><li>credentials in Secrets Manager</li><li>security group</li></ul></div>
+  </div>
+
+  <!-- ===== CH3 deploy ===== -->
+  <div id="c3">
+    <div id="d1" class="pst" style="left:60px;top:150px"><div class="n">1 · You</div><div class="s">GitHub → Actions → "Terraform Deploy" → Run workflow</div><div class="tfstep on">env = test</div><div class="tfstep on">action = apply</div></div>
+    <div id="d2" class="pst" style="left:300px;top:150px"><div class="n">2 · Runner</div><div class="s">ubuntu-latest checks out the repo and asks GitHub for an <b style="color:#FFD166">OIDC token</b></div></div>
+    <div id="d3" class="pst" style="left:540px;top:150px"><div class="n">3 · AWS STS</div><div class="s">trades the token for short-lived credentials of role</div><div class="mono" style="font-size:12.5px;margin-top:6px;color:#BFD7FF">test-datalake</div></div>
+    <div id="d4" class="pst" style="left:780px;top:150px;width:470px"><div class="n">4 · Terraform, in terraform/envs/test</div>
+      <div id="tf1" class="tfstep">init</div><div id="tf2" class="tfstep">validate</div><div id="tf3" class="tfstep">plan</div><div id="tf4" class="tfstep">apply</div>
+      <div class="s" style="margin-top:10px">only the changes are applied</div></div>
+    <div id="dstate" class="box" style="left:780px;top:350px;width:470px;height:200px;padding:16px 18px">
+      <div class="h3" style="font-size:18px">Where Terraform keeps state</div>
+      <div class="kv2" style="grid-template-columns:120px 1fr;font-size:15px">
+        <div class="k">state file</div><div class="v">s3://mtsai-datalake-tfstate-690293068614/test/terraform.tfstate</div>
+        <div class="k">lock</div><div class="v">DynamoDB mtsai-datalake-tflock</div>
+      </div>
+      <div class="lbl" style="margin-top:10px">both created once by bootstrap/</div></div>
+    <div id="dlock" class="box" style="left:60px;top:350px;width:700px;height:200px;padding:16px 18px">
+      <div class="h3" style="font-size:18px">Two workflows</div>
+      <div class="note" style="font-size:15.5px"><b>Terraform Deploy</b>: runs straight away.<br><b>Terraform Deploy (Locked)</b>: runs <b>plan</b>, then waits for a reviewer to approve before <b>apply</b>.</div></div>
+    <div id="dres" class="box" style="left:60px;top:580px;width:1190px;height:350px;padding:18px 22px">
+      <div class="h3" style="font-size:18px">What comes out: real AWS resources in the Test account</div>
+      <div id="resl" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ===== CH4 go ===== -->
+  <div id="c4">
+    <div id="gbox" class="box" style="left:60px;top:120px;width:690px;height:810px">
+      <div class="h3" style="padding:16px 20px 0">export/: one Go module, 5 commands</div>
+      <svg id="gsvg" class="abs" width="690" height="810" style="left:0;top:0">
+        <g stroke="#4A5A70" stroke-width="2" fill="none">
+          <path d="M255,145 C320,145 340,150 420,150"/><path d="M255,145 C320,145 340,250 420,250"/><path d="M255,145 C320,145 340,350 420,350"/>
+          <path d="M255,145 C320,145 340,450 420,450"/><path d="M255,145 C320,145 340,550 420,550"/><path d="M255,145 C320,145 340,650 420,650"/>
+          <path d="M255,265 C320,265 340,450 420,450"/><path d="M255,265 C320,265 340,550 420,550"/><path d="M255,265 C320,265 340,650 420,650"/>
+          <path d="M535,280 V318"/><path d="M535,380 V418" />
+        </g>
+      </svg>
+      <div id="k1" class="pkg" style="left:22px;top:113px;border-color:#00ADD8"><div class="n">cmd/export</div><div class="s">Postgres → raw, 07:00</div></div>
+      <div id="k2" class="pkg" style="left:22px;top:233px;border-color:#00ADD8"><div class="n">cmd/curate</div><div class="s">raw → curated, 07:20</div></div>
+      <div class="pkg" style="left:22px;top:353px;border-color:#3A6B8A"><div class="n">cmd/compact</div><div class="s">weekly VACUUM</div></div>
+      <div class="pkg" style="left:22px;top:443px;border-color:#3A6B8A"><div class="n">cmd/trim</div><div class="s">drop old Postgres partitions</div></div>
+      <div class="pkg" style="left:22px;top:533px;border-color:#3A6B8A"><div class="n">cmd/erasure</div><div class="s">delete a vehicle</div></div>
+      <div id="i1" class="pkg" style="left:420px;top:118px;border-color:#7D8998"><div class="n">internal/config</div><div class="s">env vars + tables.yaml</div></div>
+      <div id="i2" class="pkg" style="left:420px;top:218px;border-color:#4B7BEC"><div class="n">internal/source</div><div class="s">Postgres cursor reader</div></div>
+      <div id="i3" class="pkg" style="left:420px;top:318px;border-color:#7D8998"><div class="n">internal/model</div><div class="s">the TripEvent struct</div></div>
+      <div id="i4" class="pkg" style="left:420px;top:418px;border-color:#3F8624"><div class="n">internal/parquetw</div><div class="s">writes the Parquet file</div></div>
+      <div id="i5" class="pkg" style="left:420px;top:518px;border-color:#8C4FFF"><div class="n">internal/lake</div><div class="s">S3 upload + Athena SQL</div></div>
+      <div id="i6" class="pkg" style="left:420px;top:618px;border-color:#B7902F"><div class="n">internal/reconcile · manifest</div><div class="s">checks + evidence JSON</div></div>
+      <div class="lbl" style="position:absolute;left:22px;top:720px;width:640px">Lines show what cmd/export and cmd/curate use. cmd/curate doesn't need config, source, model or parquetw: it never touches Postgres.</div>
+    </div>
+    <div id="dock" class="box" style="left:770px;top:120px;width:480px;height:810px;padding:16px 20px">
+      <div class="h3">export/Dockerfile</div>
+      <div class="code" style="margin-top:10px;font-size:13.5px"><span class="cm"># stage 1: build (ARM64)</span>
+<span class="kw">FROM</span> golang:1.27-bookworm
+<span class="kw">RUN</span> go build -o /export  ./cmd/export
+<span class="kw">RUN</span> go build -o /curate  ./cmd/curate
+<span class="cm">    … /compact /erasure /trim</span>
+
+<span class="cm"># stage 2: tiny runtime image</span>
+<span class="kw">FROM</span> distroless/static-debian12
+<span class="kw">COPY</span> 5 binaries + tables.yaml
+<span class="kw">ENTRYPOINT</span> [<span class="str">"/export"</span>]</div>
+      <div id="dk2" style="margin-top:16px">
+        <div class="lbl">push → ECR repo</div>
+        <div class="mono" style="font-size:14px;margin-top:4px">mtsai-datalake-test-export:latest</div>
+        <div class="lbl" style="margin-top:14px">ECS task definitions pick the binary</div>
+        <div class="code" style="margin-top:6px;font-size:13.5px">export   → /export  <span class="cm">(default)</span>
+curate   → entryPoint /curate
+compact  → entryPoint /compact
+erasure  → entryPoint /erasure
+trim     → entryPoint /trim</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PART B: row journey on a big infrastructure map ===== -->
+  <div id="partb">
+    <div id="stripline" class="abs"></div><div id="stripfill" class="abs"></div>
+    <div id="strip" class="abs"></div>
+
+    <div id="map" class="abs" style="left:36px;top:212px;width:1234px;height:740px;border-radius:16px;background:#0C131D;border:1px solid #1F2B3B"></div>
+    <div class="abs" style="left:52px;top:220px;font-size:12px;font-weight:800;letter-spacing:2px;color:#4A5A70">AWS · TEST ACCOUNT 690293068614 · ap-south-1</div>
+
+    <div id="n-sch" class="mnode" style="left:56px;top:244px;width:220px;height:74px;border-color:#E7157B"><div class="n" style="color:#FF6FB0">EventBridge Scheduler</div><div class="s">07:00 export · 07:20 curate</div></div>
+    <div id="n-sec" class="mnode" style="left:56px;top:330px;width:220px;height:74px;border-color:#DD344C"><div class="n" style="color:#FF7A8A">Secrets Manager</div><div class="s">Postgres credentials</div></div>
+    <div id="n-pg" class="mnode" style="left:56px;top:416px;width:220px;height:140px;border-color:#4B7BEC"><div class="n" style="color:#8DB0FF">RDS Postgres</div><div class="s">mtsai-api-sim-test<br>table trip_events</div>
+      <svg width="54" height="50" style="position:absolute;right:12px;bottom:10px"><ellipse cx="27" cy="9" rx="23" ry="7" fill="#243B6B" stroke="#8DB0FF" stroke-width="2"/><path d="M4,9 V40 A23,7 0 0 0 50,40 V9" fill="#1B2E55" stroke="#8DB0FF" stroke-width="2"/></svg></div>
+    <div id="n-an" class="mnode" style="left:56px;top:800px;width:220px;height:130px;border-color:#F5A623"><div class="n" style="color:#FFCB6B">Analytics team</div><div class="s">queries curated in its<br>own Athena workgroup</div></div>
+
+    <div id="n-ecs" class="mnode" style="left:300px;top:244px;width:440px;height:312px;border-color:#ED7100"><div class="n" style="color:#FFA24D">ECS Fargate · cluster mtsai-datalake-test</div></div>
+    <div id="k-exp" class="mnode" style="left:316px;top:282px;width:408px;height:150px;border:2px dashed #FFA24D;background:#1D2A3B"><div class="n" style="color:#FFD0A0;font-size:15px">task /export (Go)</div>
+      <div id="sl-mem" class="slot" style="left:14px;top:40px">Go memory<br><span>[]model.TripEvent</span></div>
+      <div id="sl-pq" class="slot" style="left:206px;top:40px">/tmp disk<br><span>trip_events-….parquet</span></div></div>
+    <div id="k-cur" class="mnode" style="left:316px;top:444px;width:408px;height:96px;border:2px dashed #FFA24D;background:#1D2A3B"><div class="n" style="color:#FFD0A0;font-size:15px">task /curate (Go)</div><div class="s">starts 07:20 · sends SQL only</div></div>
+
+    <div id="n-ath" class="mnode" style="left:300px;top:584px;width:290px;height:112px;border-color:#8C4FFF"><div class="n" style="color:#B794FF">Athena</div><div class="s">runs every SQL statement<br>workgroup …-pipeline</div></div>
+    <div id="n-cw" class="mnode" style="left:606px;top:584px;width:134px;height:112px;border-color:#6B7C93"><div class="n" style="color:#B7C4D6;font-size:14px">CloudWatch + SNS</div><div class="s">logs · alarm email</div></div>
+    <div id="n-glue" class="mnode" style="left:300px;top:716px;width:440px;height:214px;border-color:#D6246E"><div class="n" style="color:#FF6FA5">Glue Data Catalog</div>
+      <div id="g-raw" class="gent">test_raw.trip_events  <b id="g-raw-v">→ 00001</b></div>
+      <div id="g-stg" class="gent" style="border-style:dashed;color:#FFB0CC">trip_events_staging_6f1c…  (temporary)</div>
+      <div id="g-cur" class="gent">test_curated.trip_events_curated  <b id="g-cur-v">→ 00004</b></div></div>
+
+    <div id="n-s3" class="mnode" style="left:780px;top:244px;width:474px;height:686px;border-color:#3F8624;background:#0F1A12"><div class="n" style="color:#7BD35A">S3 bucket · SSE-KMS</div><div class="s">mtsai-datalake-test-690293068614-ap-south-1</div></div>
+    <div id="f-stg" class="mfold" style="top:296px">raw/_staging/trip_events/</div>
+    <div id="f-rd"  class="mfold" style="top:382px">raw/trip_events/data/        <span>Iceberg</span></div>
+    <div id="f-rm"  class="mfold" style="top:462px">raw/trip_events/metadata/    <span>Iceberg</span></div>
+    <div id="f-ar"  class="mfold" style="top:562px">athena-results/export/</div>
+    <div id="f-mn"  class="mfold" style="top:662px">export-manifests/2026-07-07/</div>
+    <div id="f-cd"  class="mfold" style="top:762px">curated/trip_events/data/    <span>Iceberg</span></div>
+    <div id="f-cm"  class="mfold" style="top:842px">curated/trip_events/metadata/ <span>Iceberg</span></div>
+    <div id="x-stg" class="mfile f-pq2" style="left:820px;top:330px">6f1c…/data.parquet · 76 rows</div>
+    <div id="x-rd"  class="mfile f-pq2" style="left:820px;top:416px">+ 00003-….parquet · 76 rows</div>
+    <div id="x-rm"  class="mfile f-meta2" style="left:820px;top:496px">+ 00002-….metadata.json ★</div>
+    <div id="x-ar"  class="mfile f-tmp2" style="left:820px;top:596px">2 × query-id.csv · "76", "177962"</div>
+    <div id="x-mn"  class="mfile f-json2" style="left:820px;top:696px">trip_events.json · success: true</div>
+    <div id="x-cd"  class="mfile f-pq2" style="left:820px;top:796px">+ 00007-….parquet · 76 rows</div>
+    <div id="x-cm"  class="mfile f-meta2" style="left:820px;top:876px">+ 00005-….metadata.json ★</div>
+
+    <svg id="flow" class="abs" width="1920" height="1080" style="left:0;top:0;pointer-events:none">
+      <path id="fl-path" d="" fill="none" stroke="#FFD166" stroke-width="3" stroke-dasharray="10 8" opacity="0"/>
+      <path id="fl-ptr" d="" fill="none" stroke="#FF6FA5" stroke-width="3" stroke-dasharray="7 5" opacity="0"/>
+      <circle id="pd0" r="5" fill="#FFD166"/><circle id="pd1" r="5" fill="#FFD166"/><circle id="pd2" r="5" fill="#FFD166"/>
+    </svg>
+    <div id="pkt" class="abs"><span id="pkt-n">1</span><span id="pkt-t">SQL row</span></div>
+  </div>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <div id="panel" class="abs">
+    <div id="p1" class="pane"><h2>Three layers</h2>
+      <div class="note"><b>Infrastructure</b>: Terraform describes every AWS resource. GitHub Actions applies it.</div>
+      <div class="note"><b>Application</b>: the Go code is packed into one Docker image. ECS runs it on a schedule.</div>
+      <div class="note"><b>Data</b>: flows from Postgres through the Go job into S3, where Athena and Glue turn it into tables.</div>
+      <div class="note">Terraform creates the <b>ECR repo, ECS cluster, task definitions and schedules</b> that run the Go image. That's where the two layers meet.</div></div>
+    <div id="p2" class="pane"><h2>Modules are building blocks</h2><div class="src">terraform/envs/test/main.tf</div>
+      <div class="code"><span class="kw">module</span> <span class="str">"lake_bucket"</span> { … }
+<span class="kw">module</span> <span class="str">"glue_catalog"</span> { … }
+<span class="kw">module</span> <span class="str">"export_task"</span> {
+  bucket_arn  = module.lake_bucket.bucket_arn
+  kms_key_arn = module.lake_bucket.kms_key_arn
+  raw_database_name =
+    module.glue_catalog.raw_database_name
+  postgres_secret_arn =
+    module.mtsai_api_sim.secret_arn
+}</div>
+      <div class="note">Each module's <b>outputs</b> feed the next one's <b>inputs</b>, so the bucket, key, databases and secret are shared, not copied.</div></div>
+    <div id="p3" class="pane"><h2>No stored AWS keys</h2><div class="src">.github/workflows/deploy.yaml</div>
+      <div class="note">GitHub gets a short-lived <b>OIDC token</b>, and AWS swaps it for temporary credentials of role <b>test-datalake</b>. No access keys are stored in GitHub.</div>
+      <div class="note">The <b>state file</b> records what Terraform built. The <b>DynamoDB lock</b> stops two deploys running at once.</div></div>
+    <div id="p4" class="pane"><h2>One image, five jobs</h2><div class="src">export/cmd · export/internal · export/Dockerfile</div>
+      <div class="note"><b>cmd/</b> holds the five programs. <b>internal/</b> holds the shared building blocks they use.</div>
+      <div class="note">The image is built for <b>ARM64</b> (cheaper Fargate) on a <b>distroless</b> base: no shell, only the binaries.</div>
+      <div class="note">Each ECS task definition runs the <b>same image</b> and just picks a different binary.</div></div>
+    <!-- inspector panes: what the row looks like at each stop -->
+    <div id="q1" class="pane insp"><div class="ih"><span class="ib" style="background:#1B2E55;color:#8DB0FF">1</span>Postgres row</div><div class="src">table trip_events · 76 rows for 2026-07-07</div>
+      <table class="it"><tr><th>column</th><th>type</th><th>value</th></tr>
+      <tr><td>trip_id</td><td class="ty">BIGINT</td><td>2304</td></tr><tr><td>vehicle_id_hash</td><td class="ty">TEXT</td><td>c51e…0a77</td></tr>
+      <tr><td>city_code</td><td class="ty">TEXT</td><td>DEL</td></tr><tr><td>event_date</td><td class="ty">DATE</td><td>2026-07-07</td></tr>
+      <tr><td>distance_km</td><td class="ty">DOUBLE PRECISION</td><td>3.9</td></tr><tr><td>fare_amount</td><td class="ty">DOUBLE PRECISION</td><td>88.0</td></tr>
+      <tr><td>created_at</td><td class="ty">TIMESTAMPTZ</td><td>09:14:22</td></tr></table>
+      <div class="note">Read with a server-side cursor, 1,000 rows per fetch. The vehicle ID is already a hash.</div></div>
+    <div id="q2" class="pane insp"><div class="ih"><span class="ib" style="background:#0E3A46;color:#6FD3F0">2</span>Go struct</div><div class="src">internal/source → model.TripEvent</div>
+      <table class="it"><tr><th>field</th><th>Go type</th><th>value</th></tr>
+      <tr><td>TripID</td><td class="ty hi">int64</td><td>2304</td></tr><tr><td>VehicleIDHash</td><td class="ty hi">string</td><td>"c51e…0a77"</td></tr>
+      <tr><td>CityCode</td><td class="ty hi">string</td><td>"DEL"</td></tr><tr><td>EventDate</td><td class="ty hi">time.Time</td><td>2026-07-07</td></tr>
+      <tr><td>DistanceKM</td><td class="ty hi">float64</td><td>3.9</td></tr><tr><td>FareAmount</td><td class="ty hi">float64</td><td>88.0</td></tr>
+      <tr><td>CreatedAt</td><td class="ty hi">time.Time</td><td>09:14:22</td></tr></table>
+      <div class="chg"><b>Changed:</b> SQL types → Go types. Also: pgChecksum += 2304, and the total is 177962.</div></div>
+    <div id="q3" class="pane insp"><div class="ih"><span class="ib" style="background:#1C3A14;color:#7BD35A">3</span>Parquet columns</div><div class="src">internal/parquetw → /tmp/trip_events-….parquet</div>
+      <table class="it"><tr><th>column</th><th>Parquet type</th><th>value</th></tr>
+      <tr><td>trip_id</td><td class="ty">int64</td><td>2304</td></tr><tr><td>vehicle_id_hash</td><td class="ty">string</td><td>c51e…0a77</td></tr>
+      <tr><td>city_code</td><td class="ty">string</td><td>DEL</td></tr><tr class="hot"><td>event_date</td><td class="ty hi">int32 · DATE</td><td>20641</td></tr>
+      <tr><td>distance_km</td><td class="ty">double</td><td>3.9</td></tr><tr><td>fare_amount</td><td class="ty">double</td><td>88.0</td></tr>
+      <tr><td>created_at</td><td class="ty">int64 · TIMESTAMP</td><td>09:14:22</td></tr></table>
+      <div class="chg"><b>Changed:</b> rows → columns, and the date is stored as <b>days since 1970</b> (20641 = 2026-07-07). File: PAR1 … footer … PAR1.</div></div>
+    <div id="q4" class="pane insp"><div class="ih"><span class="ib" style="background:#1C3A14;color:#7BD35A">4</span>S3 object</div><div class="src">internal/lake · s3 PutObject</div>
+      <div class="kv3"><div>key</div><div>raw/_staging/trip_events/6f1c…/data.parquet</div><div>encryption</div><div>SSE-KMS, the lake's own key</div><div>contents</div><div>76 rows · 7 columns</div><div>a table?</div><div style="color:#FF9A9A">No. Just a file.</div></div>
+      <div class="chg"><b>Changed:</b> nothing inside. The file moves from the container to S3 and is encrypted. It's the only data file Go writes itself.</div></div>
+    <div id="q5" class="pane insp"><div class="ih"><span class="ib" style="background:#3A1024;color:#FF6FA5">5</span>Glue staging table</div><div class="src">CommitToIceberg · step 5a (Athena SQL)</div>
+      <div class="code">CREATE EXTERNAL TABLE
+  trip_events_staging_6f1c… (
+  trip_id bigint, … created_at timestamp)
+STORED AS PARQUET
+LOCATION 's3://…/raw/_staging/…/6f1c…/'</div>
+      <div class="chg"><b>Changed:</b> the file gets a <b>name and a schema</b>, so Athena can SELECT from it. A plain Hive table, not Iceberg, dropped in step 5d.</div></div>
+    <div id="q6" class="pane insp"><div class="ih"><span class="ib" style="background:#12304A;color:#7FC8FF">6</span>Iceberg data file</div><div class="src">step 5b DELETE day · 5c INSERT (Athena)</div>
+      <div class="code">manifest entry (Avro):
+{ file_path:    …/data/…/00003-….parquet,
+  record_count: 76,
+  lower_bounds: { trip_id: 2291 },
+  upper_bounds: { trip_id: 2468 } }</div>
+      <div class="chg"><b>Changed:</b> Athena rewrites the rows into the <b>Iceberg table's own file</b>, and a manifest records the row count and min/max values.</div></div>
+    <div id="q7" class="pane insp"><div class="ih"><span class="ib" style="background:#2A1A4A;color:#C8A2FF">7</span>Snapshot + pointer</div><div class="src">raw/trip_events/metadata/00002-….metadata.json</div>
+      <div class="code">{ "current-snapshot-id": 5829…,
+  "summary": { "operation": "append",
+               "added-records": "76" } }
+
+Glue metadata_location:
+  00001-….json  →  00002-….json</div>
+      <div class="chg"><b>Changed:</b> a new <b>version</b> exists, and Glue's pointer moves to it. <b>That move is the commit.</b></div></div>
+    <div id="q8" class="pane insp"><div class="ih"><span class="ib" style="background:#2A1A4A;color:#B794FF">8</span>Count + sum</div><div class="src">RunAndFetchSingleValue ×2 → athena-results/export/</div>
+      <div class="code">SELECT COUNT(*) …         → "_col0"
+                            "76"
+SELECT SUM(trip_id) …     → "_col0"
+                            "177962"</div>
+      <div class="chg"><b>Changed:</b> the data becomes <b>two numbers</b> in tiny CSV files. Go compares them with Postgres: 76 = 76 ✓, 177962 = 177962 ✓</div></div>
+    <div id="q9" class="pane insp"><div class="ih"><span class="ib" style="background:#3A2E10;color:#FFD166">9</span>Manifest JSON</div><div class="src">export-manifests/2026-07-07/trip_events.json</div>
+      <div class="code">{ "table": "trip_events",
+  "run_date": "2026-07-07",
+  "row_count": 76,
+  "checksum": 177962,
+  "duration_seconds": 11.01,
+  "success": true }</div>
+      <div class="chg"><b>Changed:</b> the run is summed up in <b>one evidence file</b>. cmd/trim reads it before dropping any Postgres data.</div></div>
+    <div id="q10" class="pane insp"><div class="ih"><span class="ib" style="background:#12304A;color:#7FC8FF">10</span>Curated row</div><div class="src">cmd/curate · 07:20 · INSERT … SELECT (Athena)</div>
+      <div class="kv3"><div>new files</div><div>curated/trip_events/data + metadata</div><div>Glue</div><div>…_curated → 00005</div><div>checked</div><div>76 / 177962 = 76 / 177962 ✓</div><div>manifest</div><div>trip_events_curated.json</div></div>
+      <div class="chg"><b>Changed:</b> copied into the <b>curated</b> table, with its own files and versions. No Postgres and no Go-written file this time.</div></div>
+    <div id="q11" class="pane insp"><div class="ih"><span class="ib" style="background:#3F2C08;color:#FFCB6B">11</span>Result row</div><div class="src">analytics workgroup · reads curated only</div>
+      <table class="it"><tr><th>city_code</th><th>trips</th><th>avg_fare</th></tr><tr><td>BLR</td><td>19</td><td>168.4</td></tr><tr class="hot"><td>DEL</td><td>16</td><td>154.2</td></tr><tr><td>MUM</td><td>17</td><td>201.9</td></tr></table>
+      <div class="chg"><b>Changed:</b> the row is now part of an <b>aggregate</b>: one of 16 DEL trips (illustrative numbers).</div></div>
+  </div>
+
+  <div id="cap" class="abs"><div id="capn"></div><div id="capt"></div></div>
+
+  <div id="chap"><div class="pt" id="chpt">PART A · HOW IT'S BUILT</div><div class="no" id="chno">CHAPTER 1</div><div class="nm" id="chnm"></div><div class="ds" id="chds"></div></div>
+
+  <div id="card-intro" class="card">
+    <h1>How the platform is <span>built</span><br>and what the <span>data looks like</span></h1>
+    <div class="agenda">
+      <div class="part">PART A · HOW IT'S BUILT</div><div class="part">PART B · FOLLOW ONE ROW</div>
+      <div class="it" id="ag1"><b>1</b>The big picture</div><div class="it" id="ag5"><b>5</b>Postgres → staging table</div>
+      <div class="it" id="ag2"><b>2</b>Terraform modules</div><div class="it" id="ag6"><b>6</b>Iceberg commit + checks</div>
+      <div class="it" id="ag3"><b>3</b>How CI deploys it</div><div class="it" id="ag7"><b>7</b>Curated + summary</div>
+      <div class="it" id="ag4"><b>4</b>The Go code + container</div>
+    </div>
+  </div>
+  <div id="card-end" class="card">
+    <h1>One row, eleven shapes</h1>
+    <table class="sum">
+      <tr><th>#</th><th>Where</th><th>What it looks like</th><th>Written by</th></tr>
+      <tr><td>1</td><td>Postgres</td><td>row in trip_events (SQL types)</td><td>mtsai-api (Test: seed-api-db)</td></tr>
+      <tr><td>2</td><td>Go memory</td><td>model.TripEvent struct</td><td>internal/source</td></tr>
+      <tr><td>3</td><td>/tmp on the container</td><td>Parquet columns, event_date as int32</td><td>internal/parquetw</td></tr>
+      <tr><td>4</td><td>raw/_staging/ in S3</td><td>one encrypted file, not a table</td><td>internal/lake</td></tr>
+      <tr><td>5</td><td>Glue</td><td>temporary Hive table pointing at it</td><td>Athena (5a)</td></tr>
+      <tr><td>6</td><td>raw/trip_events/data/</td><td>Iceberg data file + manifest entry</td><td>Athena (5c)</td></tr>
+      <tr><td>7</td><td>raw/…/metadata/ + Glue</td><td>new metadata.json, pointer moved</td><td>Athena + Glue</td></tr>
+      <tr><td>8</td><td>athena-results/export/</td><td>CSV "_col0" = 76 and 177962</td><td>Athena</td></tr>
+      <tr><td>9</td><td>export-manifests/</td><td>JSON, success: true</td><td>internal/manifest</td></tr>
+      <tr><td>10</td><td>curated/trip_events/</td><td>copied Iceberg files</td><td>Athena (cmd/curate)</td></tr>
+      <tr><td>11</td><td>analyst's screen</td><td>one of 16 DEL trips in a result</td><td>Athena (analytics)</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x,a=0,b=1) => Math.max(a, Math.min(b, x));
+const ease = x => x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+const prog = (t,a,b) => clamp((t-a)/(b-a));
+function vis(el,o){ el.style.opacity=o; el.style.visibility=o>0.001?'visible':'hidden'; }
+function fade(id,t,a,b,d=0.5){ const el=$(id); let o=0; if(t>=a&&t<b) o=Math.min(prog(t,a,a+d),1-prog(t,b-d,b)); vis(el,o); }
+const glow=(id,on)=>$(id).classList.toggle('glow',!!on);
+
+const T_END = 200;
+const CH = [
+  {s:8,   e:26,  nm:'The big picture',          ds:'three layers: infrastructure, application, data', part:'A'},
+  {s:26,  e:52,  nm:'Terraform modules',        ds:'what each module builds', part:'A'},
+  {s:52,  e:70,  nm:'How CI deploys it',        ds:'GitHub Actions, OIDC, plan and apply', part:'A'},
+  {s:70,  e:94,  nm:'The Go code + container',  ds:'five commands, one image', part:'A'},
+  {s:94,  e:131, nm:'Postgres → staging table', ds:'stops 1 to 5', part:'B'},
+  {s:131, e:168, nm:'Iceberg commit + checks',  ds:'stops 6 to 9', part:'B'},
+  {s:168, e:188, nm:'Curated + summary',        ds:'stops 10 and 11', part:'B'},
+];
+const CARD = 2.3;
+const bar=$('chapbar');
+CH.forEach((c,i)=>{ const d=document.createElement('div'); d.className='seg'+(c.part==='B'?' partb':''); d.id='seg'+i;
+  d.innerHTML=`<i></i><span><b>${c.part==='A'?'Part A':'Part B'} · ${i+1}</b>${c.nm}</span>`; bar.appendChild(d); });
+
+// row journey stops
+const STOPS = [
+  ['Postgres',96.5],['Go memory',103.2],['Parquet',109.9],['S3 object',116.6],['Glue staging',123.3],
+  ['Iceberg file',133.5],['metadata + Glue',142],['Athena check',150.5],['Manifest',159],
+  ['Curated',170.5],['Analyst',179],
+];
+const STOP_END = [103.2,109.9,116.6,123.3,131, 142,150.5,159,168, 179,188];
+const strip=$('strip');
+STOPS.forEach((s,i)=>{ const d=document.createElement('div'); d.className='stop'; d.id='st'+i; d.style.left=(i*109)+'px';
+  d.innerHTML=`<div class="dot">${i+1}</div><div class="t">${s[0]}</div>`; strip.appendChild(d); });
+
+const CHANGES = [
+  ['Stop 1 · the source','<div class="note">A normal Postgres row with <b>SQL types</b>. The export reads only one day: <b>2026-07-07</b>, <b>76 rows</b>.</div><div class="note">Read with a <b>server-side cursor</b> so a huge table never has to fit in memory at once.</div>'],
+  ['Stop 2 · into Go','<div class="chg"><b>Changed:</b> SQL types become <b>Go types</b>: BIGINT → int64, TEXT → string, DATE/TIMESTAMP → time.Time, DOUBLE → float64.</div><div class="note">The job also adds up every trip_id (<b>177962</b>) to check against the lake later.</div>'],
+  ['Stop 3 · into Parquet','<div class="chg"><b>Changed:</b> rows become <b>columns</b>, and event_date becomes <b>int32 days since 1970</b> (20641 = 2026-07-07).</div><div class="note">Why int32: the Parquet library mis-writes Go dates, so the code converts them itself (<b>writer.go</b>).</div>'],
+  ['Stop 4 · into S3','<div class="chg"><b>Changed:</b> nothing inside. The file just <b>moves</b> from the container to S3 and is <b>encrypted</b> on the way in.</div><div class="note">The local temp file is deleted when the run ends.</div>'],
+  ['Stop 5 · Glue can see it','<div class="chg"><b>Changed:</b> the file gets a <b>name and schema</b> in Glue, so Athena can SELECT from it.</div><div class="note">This is a plain Hive table, <b>not Iceberg</b>, and it is dropped a few seconds later.</div>'],
+  ['Stop 6 · Iceberg data','<div class="chg"><b>Changed:</b> Athena rewrites the rows into the <b>Iceberg table\'s own data file</b>, and records the file in a <b>manifest</b> with row count and min/max values.</div><div class="note">Before this INSERT, a DELETE for 2026-07-07 made sure a re-run replaces instead of duplicating.</div>'],
+  ['Stop 7 · the commit','<div class="chg"><b>Changed:</b> a new <b>metadata.json</b> lists the new snapshot ("added-records": 76), and Glue\'s pointer moves to it.</div><div class="note">Until that pointer moves, every reader still sees the old version.</div>'],
+  ['Stop 8 · the check','<div class="chg"><b>Changed:</b> the data becomes <b>two numbers</b>: Athena counts and sums the lake and returns them as tiny CSV files.</div><div class="note">Go parses them and compares with Postgres: <b>76 = 76</b>, <b>177962 = 177962</b>.</div>'],
+  ['Stop 9 · the evidence','<div class="chg"><b>Changed:</b> the whole run is summed up in <b>one JSON file</b>.</div><div class="note">cmd/trim later reads it: a Postgres partition is only dropped if this says <b>success: true</b>.</div>'],
+  ['Stop 10 · curated','<div class="chg"><b>Changed:</b> the rows are copied into the <b>curated</b> table, with its own files, versions and Glue pointer.</div><div class="note">v1 is a straight copy. Cleaning and dedup logic can be added here later without touching raw.</div>'],
+  ['Stop 11 · an answer','<div class="chg"><b>Changed:</b> the row stops being a row and becomes part of an <b>aggregate</b>: one of 16 DEL trips.</div><div class="note">Only the columns the query names are read, and only 2026-07-07\'s files.</div>'],
+];
+
+const caps = [
+  [10.3,17,'A1','Three layers: <b>infrastructure</b> (Terraform), <b>application</b> (Go), and the <b>data</b> they move.'],
+  [17,26,'A1','Terraform builds the <b>ECR repo, ECS tasks and schedules</b> that run the Go image.'],
+  [28.3,40,'A2','<b>bootstrap/</b> makes the state bucket once. <b>envs/test</b> wires <b>six modules</b> together.'],
+  [40,52,'A2','Each module builds one part: bucket, catalog, workgroups, export task, dashboard, source DB.'],
+  [54.3,62,'A3','Run the workflow → the runner gets an <b>OIDC token</b> → AWS gives it the <b>test-datalake</b> role.'],
+  [62,70,'A3','Terraform runs <b>init → validate → plan → apply</b>, with state in S3 and a DynamoDB lock.'],
+  [72.3,82,'A4','One Go module: <b>5 commands</b> in cmd/, shared code in <b>internal/</b>.'],
+  [82,94,'A4','Built into one <b>ARM64 distroless image</b>. Each ECS task picks its own binary.'],
+];
+STOPS.forEach((s,i)=>caps.push([s[1]+0.2, STOP_END[i], String(i+1), '']));
+const STOP_CAPS = [
+  'In <b>Postgres</b>, trip 2304 is a normal row with SQL types.',
+  'In <b>Go</b>, it becomes a <b>TripEvent struct</b>, one of 76 in memory.',
+  'In the <b>Parquet file</b>, rows become <b>columns</b>, and the date becomes <b>int32</b>.',
+  'In <b>S3</b>, it\'s one encrypted file under <b>raw/_staging/</b>. Not a table yet.',
+  '<b>Glue</b> gets a temporary table that points at the file, so Athena can read it.',
+  'Athena writes an <b>Iceberg data file</b>, and a <b>manifest</b> records its row count and min/max.',
+  'A new <b>metadata.json</b> and a moved <b>Glue pointer</b>: that\'s the commit.',
+  'Athena\'s checks come back as tiny <b>CSV files</b>: 76 rows, checksum 177962.',
+  'The whole run becomes one <b>manifest JSON</b>: success true.',
+  'At 07:20, Athena copies the day into the <b>curated</b> table.',
+  'Finally, trip 2304 is <b>one of 16 DEL trips</b> in an analyst\'s result.',
+];
+
+function render(t){
+  CH.forEach((c,i)=>{ const s=$('seg'+i); s.classList.toggle('on',t>=c.s&&t<c.e); s.classList.toggle('done',t>=c.e); s.querySelector('i').style.width=(100*prog(t,c.s,c.e))+'%'; });
+  fade('card-intro',t,-1,8.2,.7); for(let i=1;i<=7;i++) fade('ag'+i,t,1+i*.7,8.2,.4);
+  fade('card-end',t,188,999,.8);
+  const ci=CH.findIndex(c=>t>=c.s&&t<c.s+CARD);
+  if(ci>=0){ const c=CH[ci]; $('chpt').textContent = c.part==='A'?'PART A · HOW IT\'S BUILT':'PART B · FOLLOW ONE ROW'; $('chno').textContent='CHAPTER '+(ci+1);
+    $('chnm').textContent=c.nm; $('chds').textContent=c.ds; vis($('chap'),Math.min(prog(t,c.s,c.s+.4),1-prog(t,c.s+CARD-.4,c.s+CARD))); }
+  else vis($('chap'),0);
+
+  // caption
+  let c = caps.find(c=>t>=c[0]&&t<c[1]);
+  let txt = c? c[3] : '';
+  const si = STOPS.findIndex((s,i)=>t>=s[1]&&t<STOP_END[i]);
+  if (c && !txt && si>=0) txt = STOP_CAPS[si];
+  $('capn').textContent = c? c[2] : ''; $('capn').style.visibility = c?'visible':'hidden';
+  $('capn').style.background = (si>=0) ? '#2E9E4F' : '#4F8CFF';
+  $('capt').innerHTML = txt; $('capt').style.opacity = c? Math.min(1,prog(t,c[0],c[0]+.4)):0;
+
+  // CH1
+  fade('c1',t,8,26.2);
+  ['n11','n12','n13','n14','n15'].forEach((id,i)=>fade(id,t,10.6+i*.8,26.2,.4));
+  ['n21','n22','n23','n24','n25'].forEach((id,i)=>fade(id,t,14.6+i*.8,26.2,.4));
+  ['n31','n32','n33','n34','n35'].forEach((id,i)=>fade(id,t,19.4+i*.6,26.2,.4));
+  glow('n23',t>=17&&t<21); glow('n24',t>=17&&t<21); glow('n25',t>=17&&t<21); glow('n15',t>=17&&t<21);
+
+  // CH2
+  fade('c2',t,26,52.2);
+  for(let i=0;i<=11;i++){ $('tl'+i).classList.toggle('on', (i===0&&t>=28.5&&t<31)||(i===3&&t>=31&&t<34)||(i>=6&&t>=40+(i-6)*1.8&&t<41.8+(i-6)*1.8)); }
+  ['m1','m2','m3','m4','m5','m6'].forEach((id,i)=>{ fade(id,t,34+i*.9,52.2,.4); glow(id, t>=40+i*1.8&&t<41.8+i*1.8); });
+
+  // CH3
+  fade('c3',t,52,70.2);
+  const dst=[['d1',54.5],['d2',56.5],['d3',58.5],['d4',60.5]];
+  dst.forEach(([id,a])=>{ fade(id,t,a-0.3,70.2,.3); $(id).classList.toggle('pass',t>=a+1.5); glow(id,t>=a&&t<a+2); });
+  ['tf1','tf2','tf3','tf4'].forEach((id,i)=>$(id).classList.toggle('on',t>=62+i*1.4));
+  fade('dstate',t,62.5,70.2,.4); fade('dlock',t,63.5,70.2,.4); fade('dres',t,66.5,70.2,.4);
+  const res=['S3 lake bucket','KMS key','Glue test_raw','Glue test_curated','3 team workgroups','3 team IAM roles','ECR repo','ECS cluster','5 task definitions','pipeline workgroup','4 schedules','SNS alarms','CloudWatch dashboard','RDS Postgres (stand-in)','Secrets Manager secret'];
+  const k=Math.floor(res.length*prog(t,66.8,69.2));
+  $('resl').innerHTML = res.slice(0,k).map(r=>`<span class="tfstep on" style="font-size:15px;margin:8px 8px 0 0">${r}</span>`).join('');
+
+  // CH4
+  fade('c4',t,70,94.2);
+  ['k1','k2'].forEach((id,i)=>glow(id,t>=73+i*2&&t<75+i*2));
+  ['i1','i2','i3','i4','i5','i6'].forEach((id,i)=>glow(id,t>=76+i*1&&t<77+i*1));
+  glow('dock',t>=82&&t<88); glow('dk2',false);
+
+  // PART B: the row travels across the big infrastructure map
+  fade('partb',t,94,188.2,.5);
+  STOPS.forEach((s,i)=>{ const el=$('st'+i); el.classList.toggle('on',i===si); el.classList.toggle('done', t>=STOP_END[i]); });
+  $('stripfill').style.width = (si>=0? (si*109 + 109*prog(t,STOPS[si][1],STOP_END[si])) : (t>=188?1090:0))+'px';
+  const S0 = i => STOPS[i][1];
+  // node highlights per stop
+  const HL = [['n-pg'],['sl-mem','n-pg'],['sl-pq'],['f-stg'],['n-ath','n-glue'],['n-ath','f-rd'],['f-rm','n-glue'],['n-ath','f-ar'],['k-exp','f-mn'],['k-cur','n-ath','f-cd','n-glue'],['n-ath','n-an']];
+  ['n-pg','sl-mem','sl-pq','n-ath','n-glue','k-exp','k-cur','n-an','n-sch','n-sec'].forEach(id=>glow(id,false));
+  if (si>=0) HL[si].forEach(id=>{ if(!id.startsWith('f-')) glow(id,true); });
+  glow('n-sch', (t>=94&&t<98)||(t>=168&&t<171.5)); glow('n-sec', t>=96.5&&t<100);
+  ['f-stg','f-rd','f-rm','f-ar','f-mn','f-cd','f-cm'].forEach(id=>$(id).classList.toggle('hot', si>=0 && HL[si].includes(id)));
+  $('f-cm').classList.toggle('hot', si===9 && t>=S0(9)+2.4);
+  // files appear as the row lands, and stay
+  [['x-stg',S0(3)+1.6],['x-rd',S0(5)+1.6],['x-rm',S0(6)+1.2],['x-ar',S0(7)+1.8],['x-mn',S0(8)+1.6],['x-cd',S0(9)+1.8],['x-cm',S0(9)+2.6]].forEach(([id,a])=>fade(id,t,a,188.2,.4));
+  // Glue entries
+  fade('g-stg',t,S0(4)+1.4,S0(6)-0.5,.4);
+  $('g-raw-v').textContent = t>=S0(6)+2.2 ? '→ 00002' : '→ 00001';
+  $('g-cur-v').textContent = t>=S0(9)+3 ? '→ 00005' : '→ 00004';
+  // the moving packet
+  const MP = {pg:[166,500], mem:[420,370], pq:[612,370], stg:[1017,311], gstg:[520,836], rd:[1017,397], rm:[1017,477],
+              ar:[1017,577], mn:[1017,677], cd:[1017,777], an:[166,880], ath:[445,640], exp:[612,420], cur:[520,492], graw:[520,803], gcur:[520,869], cm:[1017,857]};
+  const PATHS = [
+    [[166,470],MP.pg], [MP.pg,[300,500],[340,420],MP.mem], [MP.mem,MP.pq], [MP.pq,[760,370],[760,311],MP.stg],
+    [MP.stg,[760,311],[760,640],MP.ath,MP.gstg], [MP.gstg,MP.ath,[760,640],[760,397],MP.rd], [MP.rd,MP.rm],
+    [MP.rm,[760,477],MP.ath,[760,577],MP.ar], [MP.ar,[760,577],[760,420],MP.exp,[760,420],[760,677],MP.mn],
+    [MP.mn,[760,677],[760,492],MP.cur,MP.ath,[760,777],MP.cd], [MP.cd,[760,777],MP.ath,[300,760],MP.an] ];
+  const LAB = [['SQL row','#8DB0FF'],['Go struct','#6FD3F0'],['Parquet columns','#7BD35A'],['S3 object','#7BD35A'],['Hive staging table','#FF6FA5'],
+               ['Iceberg data file','#7FC8FF'],['new snapshot','#C8A2FF'],['count + sum','#B794FF'],['manifest JSON','#FFD166'],['curated row','#7FC8FF'],['result row','#FFCB6B']];
+  const ptAt = (pts,p) => { let seg=[],tot=0; for(let i=1;i<pts.length;i++){const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(d);tot+=d;}
+    let dist=p*tot,i=0; while(i<seg.length-1&&dist>seg[i]){dist-=seg[i];i++;} const f=seg[i]?dist/seg[i]:0;
+    return [pts[i][0]+(pts[i+1][0]-pts[i][0])*f, pts[i][1]+(pts[i+1][1]-pts[i][1])*f]; };
+  const pk=$('pkt'), fp=$('fl-path'), fptr=$('fl-ptr');
+  if (si>=0 && t<188) {
+    const pts=PATHS[si], a=S0(si), arrive=ease(prog(t,a,a+1.7));
+    const [x,y]=ptAt(pts,arrive); pk.style.left=x+'px'; pk.style.top=y+'px';
+    vis(pk, Math.min(1, prog(t,a,a+.3)+ (si>0?1:0)));
+    $('pkt-n').textContent=si+1; $('pkt-t').textContent=LAB[si][0]; pk.style.background=LAB[si][1]; pk.style.color='#0B1119';
+    fp.setAttribute('d','M'+pts.map(q=>q.join(',')).join(' L')); fp.style.opacity = t < a+1.7 ? .95 : .45; fp.style.strokeDashoffset = -t*45;
+    for(let k=0;k<3;k++){ const c=$('pd'+k); const q=ptAt(pts, ((t-a)/1.3 + k/3)%1); c.setAttribute('cx',q[0]); c.setAttribute('cy',q[1]); c.style.opacity = t < a+1.7 ? 1 : .55; c.setAttribute('fill', LAB[si][1]); }
+    let ptr = null;
+    if (si===6 && t>=a+1.6) ptr=[MP.rm,[760,477],[760,772],[728,772]];
+    if (si===9 && t>=a+2.6) ptr=[MP.cm,[760,857],[760,854],[728,854]];
+    if (ptr){ fptr.setAttribute('d','M'+ptr.map(q=>q.join(',')).join(' L')); fptr.style.opacity=.95; fptr.style.strokeDashoffset=-t*35; } else fptr.style.opacity=0;
+  } else { vis(pk,0); fp.style.opacity=0; fptr.style.opacity=0; for(let k=0;k<3;k++) $('pd'+k).style.opacity=0; }
+
+  // panel
+  fade('p1',t,10.3,26); fade('p2',t,28.3,52); fade('p3',t,54.3,70); fade('p4',t,72.3,94);
+  for (let i=0;i<11;i++) fade('q'+(i+1), t, STOPS[i][1], STOP_END[i], .45);
+}
+window.render=render; window.T_END=T_END;
+if(!location.search.includes('capture')){ const st=performance.now(); (function loop(){ render(((performance.now()-st)/1000)%T_END); requestAnimationFrame(loop); })(); } else render(0);
+</script>
+</body>
+</html>

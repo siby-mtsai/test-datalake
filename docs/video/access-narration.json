@@ -1,0 +1,52 @@
+[
+  {
+    "start": 0.4,
+    "end": 6.3,
+    "text": "Who uses the data lake, what can each team see, and what rules protect the data?"
+  },
+  {
+    "start": 6.5,
+    "end": 18,
+    "text": "Three teams read from the lake: analytics, forecasting, and audit. The pipeline jobs are the only ones that write to it."
+  },
+  {
+    "start": 18.4,
+    "end": 30,
+    "text": "Each team has its own I A M role and its own Athena workgroup. A team assumes its role, and every query then runs inside that team's workgroup."
+  },
+  {
+    "start": 30.4,
+    "end": 44,
+    "text": "Every team can read the curated zone. Only audit can read raw, the untouched copy of the source. When forecasting tries to read raw, it's denied. We tested this by actually assuming each role."
+  },
+  {
+    "start": 44.4,
+    "end": 56,
+    "text": "Each workgroup has guardrails: a scan limit per query of five gigabytes, ten for audit, a monthly budget alert, and a private results folder."
+  },
+  {
+    "start": 56.4,
+    "end": 68,
+    "text": "Every query passes five checks: role, workgroup, Glue, the S3 folder, and the encryption key. Forecasting's raw query stops at the Glue check."
+  },
+  {
+    "start": 68.4,
+    "end": 80,
+    "text": "The pipeline is the only writer. It reads Postgres as a select only user, and writes raw, curated, and the manifests. The reader teams can never change lake data."
+  },
+  {
+    "start": 80.4,
+    "end": 94,
+    "text": "Now the data rules. Only hashed vehicle I Ds are stored, test cities are kept out, old data moves to cheaper storage, and erasure deletes a vehicle everywhere. These rules still need compliance sign-off."
+  },
+  {
+    "start": 94.4,
+    "end": 104,
+    "text": "Everything is encrypted, never public, and logged. Cross account access or a public endpoint needs C T O sign-off."
+  },
+  {
+    "start": 104.6,
+    "end": 114,
+    "text": "In short: three read only teams, each in its own workgroup, and one writer, the pipeline."
+  }
+]

@@ -1,0 +1,107 @@
+[
+  {
+    "start": 0.5,
+    "end": 8.2,
+    "text": "How the platform is built with Terraform and Go, and what the data looks like at every step."
+  },
+  {
+    "start": 8.4,
+    "end": 17,
+    "text": "Chapter one. There are three layers: infrastructure built by Terraform, the Go application, and the data they move."
+  },
+  {
+    "start": 17.2,
+    "end": 26,
+    "text": "They meet here: Terraform creates the E C R repo, the E C S tasks and the schedules that run the Go image."
+  },
+  {
+    "start": 26.4,
+    "end": 40,
+    "text": "Chapter two. Bootstrap creates the state bucket once. The test environment then wires six modules together, and each module's outputs feed the next one's inputs."
+  },
+  {
+    "start": 40.2,
+    "end": 52,
+    "text": "Lake bucket, Glue catalog, team workgroups, the export task, a cost dashboard, and a stand-in Postgres database."
+  },
+  {
+    "start": 52.4,
+    "end": 62,
+    "text": "Chapter three. You run the deploy workflow, and GitHub's O I D C token is swapped for temporary A W S credentials."
+  },
+  {
+    "start": 62.2,
+    "end": 70,
+    "text": "Terraform runs init, validate, plan and apply, with state in S3 and a lock in Dynamo D B."
+  },
+  {
+    "start": 70.4,
+    "end": 82,
+    "text": "Chapter four. The Go module has five commands, and shared building blocks under internal."
+  },
+  {
+    "start": 82.2,
+    "end": 94,
+    "text": "They're built into one small A R M image. Each E C S task runs the same image, and picks its own program."
+  },
+  {
+    "start": 94.4,
+    "end": 103.2,
+    "text": "Part B. Let's follow trip 2304. In Postgres, it's a normal row with S Q L types."
+  },
+  {
+    "start": 103.4,
+    "end": 109.9,
+    "text": "In Go, it becomes a TripEvent struct, one of seventy six in memory."
+  },
+  {
+    "start": 110.1,
+    "end": 116.6,
+    "text": "In the Parquet file, rows become columns, and the date is stored as a number."
+  },
+  {
+    "start": 116.8,
+    "end": 123.3,
+    "text": "In S3, it's one encrypted file in the staging folder. Not a table yet."
+  },
+  {
+    "start": 123.5,
+    "end": 131,
+    "text": "Glue gets a temporary table that points at that file, so Athena can read it."
+  },
+  {
+    "start": 131.4,
+    "end": 142,
+    "text": "Chapter six. Athena writes the rows into an Iceberg data file, and a manifest records its row count and min and max values."
+  },
+  {
+    "start": 142.2,
+    "end": 150.5,
+    "text": "A new metadata file lists the new version, and Glue's pointer moves to it. That's the commit."
+  },
+  {
+    "start": 150.7,
+    "end": 159,
+    "text": "Athena's checks come back as tiny CSV files: seventy six rows, and a checksum that matches Postgres."
+  },
+  {
+    "start": 159.2,
+    "end": 168,
+    "text": "The whole run is summed up in one manifest file that says success, true."
+  },
+  {
+    "start": 168.4,
+    "end": 179,
+    "text": "Chapter seven. At seven twenty, Athena copies the day into the curated table, and checks the counts again."
+  },
+  {
+    "start": 179.2,
+    "end": 188,
+    "text": "Finally, trip 2304 is one of sixteen Delhi trips in an analyst's result."
+  },
+  {
+    "start": 188.4,
+    "end": 200,
+    "text": "One row, eleven shapes. Pause here for the full summary."
+  }
+]

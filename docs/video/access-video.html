@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/video/MTSAi-Data-Lake-Access.mp4: who uses the lake, what each team can reach,
+  and the rules around it. window.render(t) draws the frame at t seconds (see render_video.py).
+  Facts come from terraform/modules/athena-workgroup, terraform/modules/export-task,
+  terraform/modules/lake-bucket, docs/classification-table.md, docs/DL-PLAN-001-brief.md s6/s12,
+  and the live role-isolation test recorded in docs/STATUS.md (2026-09-14).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MTSAi Data Lake Access</title>
+<style>
+  html, body { margin: 0; background: #0F1722; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0F1722; font-family: "Segoe UI", Arial, sans-serif; color: #E8EDF3; }
+  .abs { position: absolute; }
+  #hdr { left: 0; top: 0; width: 1920px; height: 74px; background: #16202E; border-bottom: 1px solid #263345; }
+  #title { left: 36px; top: 16px; font-size: 28px; font-weight: 700; }
+  #title span { color: #7FB2FF; }
+  #sub { right: 36px; top: 26px; font-size: 14px; color: #9AA8BA; }
+  #prog { left: 0; top: 72px; height: 3px; background: #4F8CFF; }
+
+  .team { position: absolute; left: 40px; width: 290px; height: 150px; border-radius: 14px; border: 2px solid; background: #16202E; box-sizing: border-box; padding: 12px 16px; }
+  .team .n { font-size: 22px; font-weight: 800; }
+  .team .s { font-size: 13.5px; color: #9AA8BA; margin-top: 2px; line-height: 1.35; }
+  .team .tag { position: absolute; left: 16px; bottom: 12px; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 12px; }
+  .glow { box-shadow: 0 0 0 4px rgba(255,209,102,.5), 0 0 26px rgba(255,209,102,.4); }
+  .dim { opacity: .35 !important; }
+
+  .zone { position: absolute; left: 950px; width: 310px; border-radius: 12px; border: 2px solid; box-sizing: border-box; padding: 10px 14px; background: #152219; }
+  .zone .n { font-size: 19px; font-weight: 800; }
+  .zone .s { font-size: 13px; color: #B7C9B0; margin-top: 2px; line-height: 1.35; }
+  .zone .m { font-family: Consolas, monospace; font-size: 12px; color: #CFE8C3; margin-top: 4px; }
+  .sub { position: absolute; font-family: Consolas, monospace; font-size: 12.5px; padding: 4px 10px; border-radius: 6px; box-sizing: border-box; background: #1C2A1F; border: 1px solid #2E4A2A; color: #CFE8C3; }
+
+  .chip { position: absolute; border-radius: 10px; border: 2px solid; background: #16202E; box-sizing: border-box; padding: 8px 12px; }
+  .chip .k { font-size: 12px; color: #9AA8BA; }
+  .chip .v { font-family: Consolas, monospace; font-size: 13px; font-weight: 700; margin-top: 2px; }
+
+  .guard { position: absolute; left: 370px; width: 540px; height: 150px; border-radius: 12px; background: #121B27; border: 1px solid #2A3A50; box-sizing: border-box; padding: 10px 14px; }
+  .guard .row { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-top: 6px; }
+  .guard .row b { color: #FFD166; }
+  .bar { position: relative; width: 250px; height: 14px; background: #0A0F16; border: 1px solid #2A3A50; border-radius: 7px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #4F8CFF; }
+  .bar .lim { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #FF6B6B; }
+
+  .gate { position: absolute; left: 400px; width: 470px; height: 108px; border-radius: 12px; border: 2px solid #3A4A60; background: #16202E; box-sizing: border-box; padding: 10px 16px 10px 70px; }
+  .gate .num { position: absolute; left: 14px; top: 28px; width: 42px; height: 42px; border-radius: 50%; background: #3A4A60; color: #fff; font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+  .gate .n { font-size: 17px; font-weight: 800; }
+  .gate .s { font-size: 13px; color: #9AA8BA; margin-top: 3px; line-height: 1.35; }
+  .gate.pass { border-color: #5BE37D; } .gate.pass .num { background: #2E9E4F; }
+  .gate.fail { border-color: #FF6B6B; } .gate.fail .num { background: #C0392B; }
+
+  .token { position: absolute; transform: translate(-50%,-50%); font-family: Consolas, monospace; font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 14px; white-space: nowrap; }
+  .mark { position: absolute; transform: translate(-50%,-50%); font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 14px; white-space: nowrap; }
+  .yes { background: #1E5E33; color: #B8F5C8; border: 1px solid #5BE37D; }
+  .no  { background: #5E1E1E; color: #FFC9C9; border: 1px solid #FF6B6B; }
+
+  .rules { position: absolute; left: 36px; top: 96px; width: 1236px; height: 856px; background: #0F1722; }
+  .rules h2 { margin: 6px 0 18px 4px; font-size: 30px; }
+  .rgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .rcard { background: #16202E; border: 1px solid #263345; border-radius: 14px; padding: 18px 20px; min-height: 300px; box-sizing: border-box; }
+  .rcard .ic { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; color: #0F1722; }
+  .rcard b { display: block; font-size: 21px; margin: 14px 0 8px; color: #fff; }
+  .rcard p { margin: 0; font-size: 16px; line-height: 1.5; color: #C9D4E2; }
+  .rcard code { font-family: Consolas, monospace; font-size: 14px; color: #FFD166; }
+
+  #panel { left: 1300px; top: 96px; width: 590px; height: 856px; border-radius: 14px; background: #121B27; border: 1px solid #263345; box-sizing: border-box; }
+  .pane { position: absolute; left: 0; top: 0; width: 590px; padding: 22px 24px; box-sizing: border-box; }
+  .pane h2 { margin: 0 0 6px; font-size: 22px; color: #fff; }
+  .pane .src { font-family: Consolas, monospace; font-size: 12.5px; color: #6FD3F0; }
+  .code { margin-top: 14px; background: #0B1119; border: 1px solid #243244; border-radius: 10px; padding: 12px 14px; font-family: Consolas, monospace; font-size: 13.5px; line-height: 1.55; white-space: pre; color: #D6DEE9; }
+  .kw { color: #FF7AB6; } .str { color: #9BE38F; } .cm { color: #6C7D93; } .num { color: #FFD166; } .id { color: #7FC8FF; }
+  .note { margin-top: 14px; font-size: 16px; line-height: 1.5; color: #D6DEE9; }
+  .note b { color: #FFD166; }
+  .warn { margin-top: 14px; font-size: 15px; line-height: 1.5; color: #FFE3B0; background: #3A2A10; border: 1px solid #8A6A2A; border-radius: 10px; padding: 10px 12px; }
+  table.mx { margin-top: 14px; border-collapse: collapse; width: 100%; font-size: 15px; }
+  table.mx th { text-align: left; color: #9AA8BA; font-weight: 600; padding: 6px 6px; border-bottom: 1px solid #2A3A50; }
+  table.mx td { padding: 7px 6px; border-bottom: 1px solid #1C2838; }
+  .y { color: #5BE37D; font-weight: 800; } .x { color: #FF6B6B; font-weight: 800; }
+
+  #cap { left: 36px; top: 972px; width: 1848px; height: 88px; border-radius: 14px; background: #16202E; border: 1px solid #263345; box-sizing: border-box; padding: 0 26px; display: flex; align-items: center; gap: 20px; }
+  #capn { flex: none; min-width: 64px; height: 56px; border-radius: 28px; background: #4F8CFF; color: #fff; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 14px; box-sizing: border-box; }
+  #capt { font-size: 24px; line-height: 1.3; }
+  #capt b { color: #FFD166; }
+
+  .card { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #0F1722; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .card h1 { font-size: 62px; margin: 0; }
+  .card h1 span { color: #7FB2FF; }
+  .card p { font-size: 26px; color: #B8C4D4; margin: 18px 0 0; max-width: 1400px; line-height: 1.45; }
+  table.end { margin-top: 36px; border-collapse: separate; border-spacing: 0; font-size: 21px; background: #16202E; border: 1px solid #263345; border-radius: 14px; overflow: hidden; }
+  table.end th { background: #1C2838; color: #B8C4D4; font-weight: 700; padding: 14px 22px; text-align: left; }
+  table.end td { padding: 13px 22px; border-top: 1px solid #263345; text-align: left; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hdr" class="abs"></div>
+  <div id="title" class="abs">MTSAi Data Lake: <span>who can access what</span></div>
+  <div id="sub" class="abs">Test account 690293068614 · rules from terraform/modules/athena-workgroup + export-task</div>
+  <div id="prog" class="abs"></div>
+
+  <!-- ===== SVG layer for lines (drawn under the boxes' text) ===== -->
+  <svg id="lines" class="abs" width="1920" height="1080" style="left:0;top:0">
+    <defs>
+      <marker id="mA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9AA8BA"/></marker>
+      <marker id="mO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#FFA24D"/></marker>
+    </defs>
+    <!-- scene 3: team -> role -> workgroup -->
+    <g id="g-roles" stroke="#9AA8BA" stroke-width="2" fill="none">
+      <path d="M330,205 H372" marker-end="url(#mA)"/><path d="M620,205 H642" marker-end="url(#mA)"/>
+      <path d="M330,375 H372" marker-end="url(#mA)"/><path d="M620,375 H642" marker-end="url(#mA)"/>
+      <path d="M330,545 H372" marker-end="url(#mA)"/><path d="M620,545 H642" marker-end="url(#mA)"/>
+      <path d="M330,775 H372" marker-end="url(#mA)"/><path d="M620,775 H642" marker-end="url(#mA)"/>
+    </g>
+    <!-- scene 4: team -> zone access lines -->
+    <path id="l-a-cur" d="M330,205 C600,205 700,260 948,260" stroke="#5BE37D" stroke-width="3" fill="none"/>
+    <path id="l-a-raw" d="M330,215 C600,230 700,480 948,480" stroke="#FF6B6B" stroke-width="3" fill="none" stroke-dasharray="1"/>
+    <path id="l-f-cur" d="M330,375 C600,375 700,270 948,270" stroke="#5BE37D" stroke-width="3" fill="none"/>
+    <path id="l-f-raw" d="M330,385 C600,390 700,490 948,490" stroke="#FF6B6B" stroke-width="3" fill="none"/>
+    <path id="l-u-cur" d="M330,545 C600,545 700,280 948,280" stroke="#5BE37D" stroke-width="3" fill="none"/>
+    <path id="l-u-raw" d="M330,555 C600,555 700,500 948,500" stroke="#5BE37D" stroke-width="3" fill="none"/>
+    <!-- scene 5: results folders -->
+    <path id="l-r-a" d="M330,250 C640,300 700,665 948,665" stroke="#4F8CFF" stroke-width="2.5" fill="none"/>
+    <path id="l-r-f" d="M330,420 C640,460 700,705 948,705" stroke="#22C1C3" stroke-width="2.5" fill="none"/>
+    <path id="l-r-u" d="M330,590 C640,620 700,745 948,745" stroke="#F5A623" stroke-width="2.5" fill="none"/>
+    <!-- scene 7: pipeline writes -->
+    <path id="l-p-raw" d="M330,760 C620,740 720,520 948,520" stroke="#FFA24D" stroke-width="3" fill="none" marker-end="url(#mO)"/>
+    <path id="l-p-cur" d="M330,750 C620,700 720,300 948,300" stroke="#FFA24D" stroke-width="3" fill="none" marker-end="url(#mO)"/>
+    <path id="l-p-man" d="M330,800 C620,830 760,880 948,880" stroke="#FFA24D" stroke-width="3" fill="none" marker-end="url(#mO)"/>
+    <path id="l-p-pg"  d="M560,700 C470,690 400,720 334,745" stroke="#8DB0FF" stroke-width="3" fill="none" marker-end="url(#mA)"/>
+  </svg>
+
+  <!-- ===== TEAMS ===== -->
+  <div id="t-ana" class="team" style="top:130px;border-color:#4F8CFF"><div class="n" style="color:#8DB6FF">Analytics</div><div class="s">mtsai-analytics<br>reports and trends</div><div class="tag" id="tg-ana" style="background:#1B2E55;color:#8DB6FF">reader</div></div>
+  <div id="t-for" class="team" style="top:300px;border-color:#22C1C3"><div class="n" style="color:#7FE6E7">Forecasting</div><div class="s">forecasting / AI workstream<br>model training</div><div class="tag" id="tg-for" style="background:#0E3A3B;color:#7FE6E7">reader</div></div>
+  <div id="t-aud" class="team" style="top:470px;border-color:#F5A623"><div class="n" style="color:#FFCB6B">Audit</div><div class="s">auditors · audit service<br>evidence and history</div><div class="tag" id="tg-aud" style="background:#3F2C08;color:#FFCB6B">reader</div></div>
+  <div id="t-pipe" class="team" style="top:700px;border-color:#ED7100"><div class="n" style="color:#FFA24D">Pipeline jobs</div><div class="s">cmd/export · cmd/curate<br>compact · trim · erasure</div><div class="tag" style="background:#3A2410;color:#FFA24D">the only writer</div></div>
+
+  <!-- ===== LAKE ===== -->
+  <div id="bucket" class="abs" style="left:930px;top:110px;width:350px;height:840px;border:2px solid #3F8624;border-radius:16px;background:#101C14"></div>
+  <div id="bucket-l" class="abs" style="left:950px;top:120px;font-size:15px;font-weight:800;color:#7BD35A">S3 bucket · SSE-KMS encrypted</div>
+  <div id="z-cur" class="zone" style="top:156px;height:200px;border-color:#4FA3D9;background:#12202B"><div class="n" style="color:#7FC8FF">curated/</div><div class="s">cleaned, stable tables:<br>what most teams should use</div><div class="m">Glue db: test_curated</div><div class="m">trip_events_curated</div></div>
+  <div id="z-raw" class="zone" style="top:376px;height:200px;border-color:#5FBF6A"><div class="n" style="color:#7BD35A">raw/</div><div class="s">untouched copy of Postgres:<br>audit and replay layer</div><div class="m">Glue db: test_raw</div><div class="m">trip_events</div></div>
+  <div id="z-res" class="zone" style="top:596px;height:176px;border-color:#6B7C93;background:#161C24"><div class="n" style="color:#B7C4D6">athena-results/</div><div class="s">query output per team · 7 days</div></div>
+  <div id="r-a" class="sub" style="left:970px;top:652px;width:270px;color:#8DB6FF">analytics/</div>
+  <div id="r-f" class="sub" style="left:970px;top:692px;width:270px;color:#7FE6E7">forecasting/</div>
+  <div id="r-u" class="sub" style="left:970px;top:732px;width:270px;color:#FFCB6B">audit/</div>
+  <div id="z-man" class="zone" style="top:790px;height:140px;border-color:#B7902F;background:#1F1A0E"><div class="n" style="color:#FFD166">export-manifests/</div><div class="s">run evidence: row counts,<br>checksums, success true/false</div></div>
+
+  <!-- ===== scene 3: roles + workgroups ===== -->
+  <div id="g-chips">
+    <div class="chip" style="left:374px;top:172px;width:246px;border-color:#4F8CFF"><div class="k">IAM role</div><div class="v">…-test-analytics</div></div>
+    <div class="chip" style="left:644px;top:172px;width:270px;border-color:#8C4FFF"><div class="k">Athena workgroup</div><div class="v">…-test-analytics</div></div>
+    <div class="chip" style="left:374px;top:342px;width:246px;border-color:#22C1C3"><div class="k">IAM role</div><div class="v">…-test-forecasting</div></div>
+    <div class="chip" style="left:644px;top:342px;width:270px;border-color:#8C4FFF"><div class="k">Athena workgroup</div><div class="v">…-test-forecasting</div></div>
+    <div class="chip" style="left:374px;top:512px;width:246px;border-color:#F5A623"><div class="k">IAM role</div><div class="v">…-test-audit</div></div>
+    <div class="chip" style="left:644px;top:512px;width:270px;border-color:#8C4FFF"><div class="k">Athena workgroup</div><div class="v">…-test-audit</div></div>
+    <div class="chip" style="left:374px;top:742px;width:246px;border-color:#ED7100"><div class="k">IAM task role</div><div class="v">…-test-export-task</div></div>
+    <div class="chip" style="left:644px;top:742px;width:270px;border-color:#8C4FFF"><div class="k">Athena workgroup</div><div class="v">…-test-pipeline</div></div>
+    <div class="abs" style="left:374px;top:120px;font-size:13px;color:#9AA8BA">assume role →</div>
+  </div>
+
+  <!-- ===== scene 4 marks ===== -->
+  <div id="m-a-cur" class="mark yes" style="left:760px;top:246px">✓ read</div>
+  <div id="m-a-raw" class="mark no"  style="left:760px;top:420px">✗ AccessDenied</div>
+  <div id="m-f-cur" class="mark yes" style="left:700px;top:300px">✓ read</div>
+  <div id="m-f-raw" class="mark no"  style="left:760px;top:462px">✗ AccessDenied</div>
+  <div id="m-u-cur" class="mark yes" style="left:640px;top:380px">✓ read</div>
+  <div id="m-u-raw" class="mark yes" style="left:780px;top:520px">✓ read (audit only)</div>
+
+  <!-- ===== scene 5 guardrails ===== -->
+  <div id="gd-a" class="guard" style="top:130px">
+    <div style="font-weight:800;color:#8DB6FF">analytics guardrails</div>
+    <div class="row">scan per query <div class="bar"><i id="bar-a" style="width:30%"></i><div class="lim" style="left:80%"></div></div><b id="bar-a-t">5 GB max</b></div>
+    <div class="row">monthly budget <b>$50</b> · email alert at 100%</div>
+    <div class="row" id="cancel" style="color:#FF9A9A;font-weight:700">✗ query hit 5 GB → cancelled by Athena</div>
+  </div>
+  <div id="gd-f" class="guard" style="top:300px">
+    <div style="font-weight:800;color:#7FE6E7">forecasting guardrails</div>
+    <div class="row">scan per query <div class="bar"><i style="width:45%;background:#22C1C3"></i><div class="lim" style="left:80%"></div></div><b>5 GB max</b></div>
+    <div class="row">monthly budget <b>$50</b> · email alert at 100%</div>
+  </div>
+  <div id="gd-u" class="guard" style="top:470px">
+    <div style="font-weight:800;color:#FFCB6B">audit guardrails</div>
+    <div class="row">scan per query <div class="bar"><i style="width:35%;background:#F5A623"></i><div class="lim" style="left:80%"></div></div><b>10 GB max</b></div>
+    <div class="row">monthly budget <b>$25</b> · email alert at 100%</div>
+  </div>
+
+  <!-- ===== scene 6 gates ===== -->
+  <div id="g-gates">
+    <div id="gt1" class="gate" style="top:120px"><div class="num">1</div><div class="n">IAM role</div><div class="s">Is this caller allowed to use the lake at all?<br>Only via its team's role.</div></div>
+    <div id="gt2" class="gate" style="top:260px"><div class="num">2</div><div class="n">Athena workgroup</div><div class="s">Only its own workgroup. Settings are enforced:<br>scan limit, results folder, encryption.</div></div>
+    <div id="gt3" class="gate" style="top:400px"><div class="num">3</div><div class="n">Glue catalog → database → table</div><div class="s">All three levels must allow it.<br>raw database is granted to audit only.</div></div>
+    <div id="gt4" class="gate" style="top:540px"><div class="num">4</div><div class="n">S3 folder</div><div class="s">GetObject + ListBucket only on allowed prefixes,<br>so other zones can't even be listed.</div></div>
+    <div id="gt5" class="gate" style="top:680px"><div class="num">5</div><div class="n">KMS key</div><div class="s">Files are encrypted. The role must be allowed<br>to decrypt with the lake's key.</div></div>
+  </div>
+  <div id="tok1" class="token" style="background:#4F8CFF;color:#06122B">analytics: SELECT … FROM test_curated</div>
+  <div id="tok2" class="token" style="background:#22C1C3;color:#032B2C">forecasting: SELECT … FROM test_raw</div>
+  <div id="m-g-ok"   class="mark yes" style="left:1100px;top:320px;font-size:15px">✓ rows returned</div>
+  <div id="m-g-deny" class="mark no"  style="left:640px;top:525px;font-size:15px">✗ AccessDenied on glue:GetDatabase: stopped at gate 3</div>
+
+  <!-- ===== scene 7 pipeline ===== -->
+  <div id="g-pipe">
+    <div class="chip" style="left:560px;top:640px;width:250px;border-color:#4B7BEC"><div class="k">RDS Postgres</div><div class="v">export reader: SELECT only</div><div class="k" style="margin-top:4px">password from Secrets Manager</div></div>
+    <div class="abs" style="left:380px;top:890px;font-size:15px;color:#FFA24D;font-weight:700">orange = writes raw · curated · manifests</div>
+    <div class="abs" style="left:380px;top:916px;font-size:14px;color:#9AA8BA">deletes files only for VACUUM and erasure</div>
+  </div>
+
+  <!-- ===== scene 8/9 rules ===== -->
+  <div id="rules-data" class="rules">
+    <h2>Rules for the data itself</h2>
+    <div class="rgrid">
+      <div class="rcard" id="rd1"><div class="ic" style="background:#8DB6FF">#</div><b>Hashed IDs only</b><p>Personal data is stored as <code>vehicle_id_hash</code>, never a plain number plate or name. Every personal-data table keeps that ID so it can be erased.</p></div>
+      <div class="rcard" id="rd2"><div class="ic" style="background:#FF9A9A">✗</div><b>No test data</b><p>Synthetic <code>CITY_ZZ</code> / Cityville rows never enter the production lake. They're filtered out by city code.</p></div>
+      <div class="rcard" id="rd3"><div class="ic" style="background:#7BD35A">⏳</div><b>Retention</b><p>Files move to cheaper storage over time: Intelligent-Tiering at <code>30 days</code>, raw to Glacier IR at <code>365 days</code>. Query results are deleted after <code>7 days</code>.</p></div>
+      <div class="rcard" id="rd4"><div class="ic" style="background:#FFCB6B">⌫</div><b>Right to erasure</b><p><code>DELETE</code> the vehicle's rows in raw and curated, then <code>VACUUM</code> so no old version can bring them back. The result is recorded in a manifest.</p></div>
+      <div class="rcard" id="rd5"><div class="ic" style="background:#B794FF">=</div><b>Every run is checked</b><p>Row counts and checksums must match Postgres (and raw ↔ curated), or the run fails and an alert email goes out.</p></div>
+      <div class="rcard" id="rd6"><div class="ic" style="background:#7FE6E7">§</div><b>Per-jurisdiction law</b><p>DPDPA (India), GDPR (Budapest), PIPEDA (Toronto). Retention periods are set per jurisdiction and still need sign-off.</p></div>
+    </div>
+  </div>
+  <div id="rules-sec" class="rules">
+    <h2>Rules for security and governance</h2>
+    <div class="rgrid">
+      <div class="rcard" id="rs1"><div class="ic" style="background:#7BD35A">🔒</div><b>Encrypted everywhere</b><p>Lake files and query results use SSE-KMS with our own customer-managed key.</p></div>
+      <div class="rcard" id="rs2"><div class="ic" style="background:#FF9A9A">⛔</div><b>Never public</b><p>S3 Block Public Access is on for the lake bucket. There are no public endpoints.</p></div>
+      <div class="rcard" id="rs3"><div class="ic" style="background:#8DB6FF">👁</div><b>Access is logged</b><p>S3 server access logs go to a separate logs bucket. Every export writes a manifest as evidence.</p></div>
+      <div class="rcard" id="rs4"><div class="ic" style="background:#FFCB6B">1</div><b>One role per team</b><p>No shared logins. Each team is fenced into its own role and workgroup, and the pipeline has its own separate role.</p></div>
+      <div class="rcard" id="rs5"><div class="ic" style="background:#B794FF">✍</div><b>CTO sign-off</b><p>Any cross-account access, public endpoint, or wider IAM permissions needs a written recommendation and CTO approval first.</p></div>
+      <div class="rcard" id="rs6"><div class="ic" style="background:#7FE6E7">▦</div><b>Column-level later</b><p>Access is per zone today (IAM). Lake Formation is the plan if column-level control is ever needed.</p></div>
+    </div>
+  </div>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <div id="panel" class="abs">
+    <div id="p-teams" class="pane">
+      <h2>Who uses the lake</h2>
+      <div class="src">docs/DL-PLAN-001-brief.md · s2, s6</div>
+      <div class="note"><b>Three reader teams</b>, each with its own access:<br>• <b>Analytics</b>: mtsai-analytics<br>• <b>Forecasting</b>: the forecasting / AI workstream<br>• <b>Audit</b>: auditors and the audit service</div>
+      <div class="note"><b>One writer</b>: the pipeline jobs that run on ECS (export, curate, compact, trim, erasure).</div>
+      <div class="note">City dashboards (GR Demo, Control Center) are also named as consumers in the brief, but they don't have their own workgroup yet.</div>
+    </div>
+    <div id="p-roles" class="pane">
+      <h2>A role and a workgroup per team</h2>
+      <div class="src">terraform/modules/athena-workgroup/main.tf</div>
+      <div class="code"><span class="kw">resource</span> <span class="str">"aws_iam_role"</span> <span class="str">"consumer"</span> {
+  <span class="id">for_each</span> = var.consumers
+  <span class="cm"># analytics, forecasting, audit</span>
+  <span class="id">name</span> = <span class="str">"mtsai-datalake-test-${each.key}"</span>
+}
+<span class="kw">resource</span> <span class="str">"aws_athena_workgroup"</span> <span class="str">"consumer"</span> {
+  <span class="id">enforce_workgroup_configuration</span> = <span class="kw">true</span>
+}</div>
+      <div class="note">A team member (or service) <b>assumes</b> the team's role, and can then only run queries in that team's workgroup.</div>
+      <div class="warn"><b>Still to do:</b> each role currently trusts the whole AWS account. Narrowing it to the real people and services for each team is an open TODO in the Terraform.</div>
+    </div>
+    <div id="p-zones" class="pane">
+      <h2>Which zone each team can read</h2>
+      <div class="src">raw_zone_read_access in variables.tf</div>
+      <table class="mx">
+        <tr><th></th><th>curated/</th><th>raw/</th><th>write</th></tr>
+        <tr><td style="color:#8DB6FF">Analytics</td><td class="y">✓</td><td class="x">✗</td><td class="x">✗</td></tr>
+        <tr><td style="color:#7FE6E7">Forecasting</td><td class="y">✓</td><td class="x">✗</td><td class="x">✗</td></tr>
+        <tr><td style="color:#FFCB6B">Audit</td><td class="y">✓</td><td class="y">✓</td><td class="x">✗</td></tr>
+        <tr><td style="color:#FFA24D">Pipeline</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+      </table>
+      <div class="note"><b>Tested for real on 2026-09-14</b> by assuming each role: forecasting → raw was <b>AccessDenied</b>, forecasting → curated <b>succeeded</b>, audit → raw <b>succeeded</b>.</div>
+    </div>
+    <div id="p-guard" class="pane">
+      <h2>Guardrails per team</h2>
+      <div class="src">terraform/modules/athena-workgroup/variables.tf</div>
+      <div class="code"><span class="id">analytics</span>   = { cutoff = <span class="num">5 GB</span>,  budget = <span class="num">$50</span> }
+<span class="id">forecasting</span> = { cutoff = <span class="num">5 GB</span>,  budget = <span class="num">$50</span> }
+<span class="id">audit</span>       = { cutoff = <span class="num">10 GB</span>, budget = <span class="num">$25</span>,
+                raw_zone_read_access = <span class="kw">true</span> }</div>
+      <div class="note">• A query that scans past its limit is <b>cancelled</b> by Athena.<br>• Going over the monthly budget sends an <b>email alert</b>.<br>• Results land in the team's own <b>athena-results/&lt;team&gt;/</b> folder. Other teams can't list it, and it's deleted after 7 days.</div>
+    </div>
+    <div id="p-gates" class="pane">
+      <h2>Five checks on every query</h2>
+      <div class="src">IAM policy statements (athena-workgroup/main.tf)</div>
+      <div class="code"><span class="num">1-2</span> <span class="id">AthenaWorkgroupOnly</span>
+<span class="num">3</span>   <span class="id">GlueCatalogRoot</span> + <span class="id">GlueCuratedRead</span>
+    <span class="id">GlueRawRead</span>          <span class="cm"># audit only</span>
+<span class="num">4</span>   <span class="id">CuratedZoneGet / List</span> <span class="cm"># prefix-scoped</span>
+    <span class="id">RawZoneGet / List</span>     <span class="cm"># audit only</span>
+    <span class="id">AthenaResultsReadWrite</span> <span class="cm"># own folder</span>
+<span class="num">5</span>   <span class="id">ResultsDecrypt</span>        <span class="cm"># KMS</span></div>
+      <div class="note">A query has to pass <b>all</b> of these. Each one was added after a real permission failure showed it was needed, and it's written down in STATUS.md.</div>
+    </div>
+    <div id="p-pipe" class="pane">
+      <h2>The pipeline is the only writer</h2>
+      <div class="src">terraform/modules/export-task/main.tf</div>
+      <div class="note">The export task role can:<br>• read Postgres as a <b>SELECT-only</b> user (password from Secrets Manager)<br>• write <b>raw/</b>, <b>curated/</b> and <b>export-manifests/</b><br>• run Athena in its own <b>pipeline</b> workgroup<br>• delete files <b>only</b> for VACUUM and erasure</div>
+      <div class="note">Reader teams have <b>no write permission at all</b>, so nobody can change lake data by accident.</div>
+    </div>
+    <div id="p-data" class="pane">
+      <h2>Where these rules come from</h2>
+      <div class="src">docs/classification-table.md</div>
+      <div class="note">Every source table is placed in a class (hot, warm events, cold reference, derived, test). The class decides what the lake keeps and for how long.</div>
+      <div class="warn"><b>Status: draft.</b> Retention periods are still placeholders, and the table needs sign-off from the CTO and the GDPR (Budapest) and PIPEDA (Toronto) compliance owners.</div>
+    </div>
+    <div id="p-sec" class="pane">
+      <h2>Governance</h2>
+      <div class="src">docs/DL-PLAN-001-brief.md · s6, s12</div>
+      <div class="note">Access is controlled with <b>IAM</b>: one role per team, scoped by zone.</div>
+      <div class="note">These always go to the CTO first, with a written recommendation:<br>• cross-account access or a public endpoint<br>• IAM permissions wider than the org handoff<br>• promotion to the prod account</div>
+    </div>
+  </div>
+
+  <div id="cap" class="abs"><div id="capn">0</div><div id="capt"></div></div>
+
+  <div id="card-intro" class="card">
+    <h1>MTSAi Data Lake: <span>who can access what</span></h1>
+    <p>The teams that use the lake, what each one can see, the guardrails on their queries, and the rules that protect the data.</p>
+  </div>
+  <div id="card-end" class="card">
+    <h1>Access at a glance</h1>
+    <table class="end">
+      <tr><th>Team</th><th>curated/</th><th>raw/</th><th>write</th><th>scan limit / query</th><th>monthly budget</th></tr>
+      <tr><td style="color:#8DB6FF;font-weight:700">Analytics</td><td class="y">✓ read</td><td class="x">✗</td><td class="x">✗</td><td>5 GB</td><td>$50</td></tr>
+      <tr><td style="color:#7FE6E7;font-weight:700">Forecasting</td><td class="y">✓ read</td><td class="x">✗</td><td class="x">✗</td><td>5 GB</td><td>$50</td></tr>
+      <tr><td style="color:#FFCB6B;font-weight:700">Audit</td><td class="y">✓ read</td><td class="y">✓ read</td><td class="x">✗</td><td>10 GB</td><td>$25</td></tr>
+      <tr><td style="color:#FFA24D;font-weight:700">Pipeline jobs</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓ only writer</td><td>n/a</td><td>n/a</td></tr>
+    </table>
+    <p style="font-size:20px;margin-top:30px">Encrypted · never public · every run checked · erasure on request · CTO sign-off for anything wider</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x,a=0,b=1) => Math.max(a, Math.min(b, x));
+const ease = x => x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+const prog = (t,a,b) => clamp((t-a)/(b-a));
+function vis(el, o) { el.style.opacity = o; el.style.visibility = o > 0.001 ? 'visible' : 'hidden'; }
+function fade(id, t, a, b, d=0.5) { const el=$(id); let o=0; if (t>=a && t<b) o=Math.min(prog(t,a,a+d), 1-prog(t,b-d,b)); vis(el,o); }
+function draw(id, t, a, b, until) {           // stroke draws in over [a,b], visible until 'until'
+  const el = $(id), L = el.getTotalLength();
+  el.style.strokeDasharray = L; el.style.strokeDashoffset = L*(1-ease(prog(t,a,b)));
+  el.style.opacity = (t>=a && t<until) ? Math.min(1, 1-prog(t,until-0.5,until)) : 0;
+}
+function along(tokId, t, a, b, pts) {
+  const el=$(tokId); if (t<a||t>b) { el.style.visibility='hidden'; return; }
+  el.style.visibility='visible'; el.style.opacity=1;
+  const p=ease(prog(t,a,b)); let seg=[],tot=0;
+  for (let i=1;i<pts.length;i++){const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(d);tot+=d;}
+  let dist=p*tot,i=0; while(i<seg.length-1&&dist>seg[i]){dist-=seg[i];i++;}
+  const f=seg[i]?dist/seg[i]:0;
+  el.style.left=(pts[i][0]+(pts[i+1][0]-pts[i][0])*f)+'px'; el.style.top=(pts[i][1]+(pts[i+1][1]-pts[i][1])*f)+'px';
+}
+
+const T_END = 114;
+const captions = [
+  [6,  18,  'Teams', 'Three <b>reader</b> teams use the lake. The <b>pipeline jobs</b> are the only ones that write to it.'],
+  [18, 30,  'Roles', 'Each team has its own <b>IAM role</b> and its own <b>Athena workgroup</b>, and every query runs inside it.'],
+  [30, 44,  'Zones', 'Everyone can read <b>curated</b>. Only <b>audit</b> can read <b>raw</b>. Anyone else gets <b>AccessDenied</b>.'],
+  [44, 56,  'Limits', 'Guardrails: a <b>scan limit</b> per query, a <b>monthly budget</b> with email alerts, and a private results folder.'],
+  [56, 68,  'Checks', 'Every query must pass <b>five checks</b>. Failing any one stops it.'],
+  [68, 80,  'Writer', 'Only the <b>pipeline</b> writes. It reads Postgres as a <b>SELECT-only</b> user.'],
+  [80, 94,  'Data', 'Data rules: <b>hashed IDs</b>, <b>no test data</b>, <b>retention</b> tiers, and <b>erasure</b> on request.'],
+  [94, 104, 'Security', 'Security: <b>encrypted</b>, <b>never public</b>, <b>logged</b>, and <b>CTO sign-off</b> for anything wider.'],
+];
+
+function render(t) {
+  $('prog').style.width = (1920*clamp(t/T_END))+'px';
+  fade('card-intro', t, -1, 6.3, 0.8);
+  fade('card-end', t, 104, 999, 0.8);
+
+  const c = captions.find(c => t>=c[0] && t<c[1]);
+  $('capn').textContent = c ? c[2] : ''; $('capn').style.visibility = c ? 'visible' : 'hidden';
+  $('capt').innerHTML = c ? c[3] : ''; $('capt').style.opacity = c ? Math.min(1, prog(t,c[0],c[0]+.4)) : 0;
+
+  // base diagram: teams + lake (visible 6..80)
+  const base = (id,a) => fade(id, t, a, 80.2, 0.6);
+  base('t-ana',6.6); base('t-for',7.4); base('t-aud',8.2); base('t-pipe',9.4);
+  ['bucket','bucket-l','z-cur','z-raw','z-res','r-a','r-f','r-u','z-man'].forEach((id,i)=>base(id, 10.5+i*0.2));
+
+  // glows / dims by scene
+  const g = (id,on)=>$(id).classList.toggle('glow',!!on);
+  g('t-ana', (t>=6.6&&t<8)||(t>=46&&t<51)||(t>=57&&t<62.5));
+  g('t-for', (t>=7.4&&t<9)||(t>=36&&t<39)||(t>=63&&t<66.5));
+  g('t-aud', (t>=8.2&&t<10)||(t>=39&&t<43));
+  g('t-pipe',(t>=9.4&&t<12)||(t>=68&&t<80));
+  g('z-raw', (t>=33&&t<43)||(t>=70&&t<74));
+  g('z-cur', (t>=31&&t<43)||(t>=61.5&&t<63));
+  g('z-res', t>=51&&t<55.5);
+  g('z-man', t>=74&&t<78);
+  ['t-ana','t-for','t-aud'].forEach(id=>$(id).classList.toggle('dim', t>=69&&t<80));
+  $('tg-ana').textContent = $('tg-for').textContent = $('tg-aud').textContent = (t>=69&&t<80) ? 'read-only' : 'reader';
+
+  // scene 3
+  fade('g-chips', t, 18.5, 30, 0.6);
+  const gr=$('g-roles'); gr.style.opacity = (t>=18.5&&t<30)?Math.min(prog(t,18.5,19.3),1-prog(t,29.5,30)):0;
+
+  // scene 4
+  draw('l-a-cur',t,31,32,44); draw('l-a-raw',t,33,34,44);
+  draw('l-f-cur',t,35.5,36.5,44); draw('l-f-raw',t,37,38,44);
+  draw('l-u-cur',t,39.5,40.5,44); draw('l-u-raw',t,41,42,44);
+  fade('m-a-cur',t,32,44,.3); fade('m-a-raw',t,34,44,.3); fade('m-f-cur',t,36.5,44,.3);
+  fade('m-f-raw',t,38,44,.3); fade('m-u-cur',t,40.5,44,.3); fade('m-u-raw',t,42,44,.3);
+
+  // scene 5
+  fade('gd-a',t,44.5,56,.5); fade('gd-f',t,45.3,56,.5); fade('gd-u',t,46.1,56,.5);
+  const bw = 30 + 60*ease(prog(t,47,50));
+  $('bar-a').style.width = Math.min(bw,80)+'%'; $('bar-a').style.background = bw>=80 ? '#FF6B6B' : '#4F8CFF';
+  fade('cancel',t,50,56,.3);
+  draw('l-r-a',t,51,52.2,56); draw('l-r-f',t,51.8,53,56); draw('l-r-u',t,52.6,53.8,56);
+
+  // scene 6
+  fade('g-gates',t,56.3,68,.5);
+  const gx=635, gy=[174,314,454,594,734];
+  along('tok1',t,57,62,[[330,205],[gx,gy[0]-60],[gx,gy[0]],[gx,gy[1]],[gx,gy[2]],[gx,gy[3]],[gx,gy[4]],[900,760],[1100,330]]);
+  along('tok2',t,63,65.2,[[330,375],[gx,gy[0]-60],[gx,gy[0]],[gx,gy[1]],[gx,gy[2]-10]]);
+  const pass1 = [57.9,58.6,59.3,60.0,60.7];
+  for (let i=0;i<5;i++){
+    const el=$('gt'+(i+1)); let s='';
+    if (t>=pass1[i] && t<63) s='pass';
+    if (t>=63) { if (i<2 && t>=63.6+i*0.6) s='pass'; if (i===2 && t>=65.1) s='fail'; }
+    el.classList.toggle('pass', s==='pass'); el.classList.toggle('fail', s==='fail');
+  }
+  fade('m-g-ok',t,61.8,63,.3); fade('m-g-deny',t,65.2,68,.3);
+
+  // scene 7
+  fade('g-pipe',t,68.5,80,.5);
+  draw('l-p-pg',t,69,70,80); draw('l-p-raw',t,70.5,71.8,80); draw('l-p-cur',t,72,73.3,80); draw('l-p-man',t,74,75.3,80);
+
+  // scene 8/9
+  fade('rules-data',t,80,94.2,.6); ['rd1','rd2','rd3','rd4','rd5','rd6'].forEach((id,i)=>fade(id,t,80.8+i*1.9,94.2,.4));
+  fade('rules-sec',t,94,104.2,.6); ['rs1','rs2','rs3','rs4','rs5','rs6'].forEach((id,i)=>fade(id,t,94.6+i*1.2,104.2,.4));
+
+  // right panel
+  fade('p-teams',t,6,18); fade('p-roles',t,18,30); fade('p-zones',t,30,44); fade('p-guard',t,44,56);
+  fade('p-gates',t,56,68); fade('p-pipe',t,68,80); fade('p-data',t,80,94); fade('p-sec',t,94,104);
+}
+window.render = render; window.T_END = T_END;
+if (!location.search.includes('capture')) {
+  const start = performance.now();
+  (function loop(){ render(((performance.now()-start)/1000) % T_END); requestAnimationFrame(loop); })();
+} else { render(0); }
+</script>
+</body>
+</html>
